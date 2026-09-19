@@ -10,6 +10,9 @@ export interface PlayerMatchEntry {
   mode: Match['mode'];
   songs: number;
   guessRate: number; // %
+  // Performance = the mode/submode rating (see guess-stats.ts) — the number
+  // the match Guess Rate table shows and rates players by.
+  performance: number;
   // NGMC only:
   correct?: number;
   taken?: number;
@@ -23,6 +26,12 @@ export interface NgmcAggregate {
   totalSongs: number;
   totalCorrect: number;
   overallGuessRate: number; // % — totalCorrect / totalSongs
+  // Songs-weighted mean of each match's Performance (see computePerformance
+  // in guess-stats.ts). Weighted rather than a plain mean because
+  // Performance is a per-tournament rating: players don't play the same
+  // number of songs in every tournament, and a rating built on three songs
+  // shouldn't count as much as one built on thirty.
+  overallPerformance: number;
   totalTaken: number;
   totalEffTaken: number;
   totalBlocked: number;
@@ -38,6 +47,9 @@ export interface ErumodeAggregate {
   // types. Weighting by each match's own opportunity count keeps that
   // comparable.
   overallGuessRate: number; // %
+  // Songs-weighted mean of each match's Performance — same rationale as the
+  // NGMC aggregate above.
+  overallPerformance: number;
 }
 
 export interface PlayerSummary {
@@ -54,6 +66,7 @@ function emptyNgmc(): NgmcAggregate {
     totalSongs: 0,
     totalCorrect: 0,
     overallGuessRate: 0,
+    overallPerformance: 0,
     totalTaken: 0,
     totalEffTaken: 0,
     totalBlocked: 0,
@@ -62,7 +75,7 @@ function emptyNgmc(): NgmcAggregate {
 }
 
 function emptyErumode(): ErumodeAggregate {
-  return { matchesPlayed: 0, totalSongs: 0, overallGuessRate: 0 };
+  return { matchesPlayed: 0, totalSongs: 0, overallGuessRate: 0, overallPerformance: 0 };
 }
 
 /**
@@ -127,6 +140,7 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
         summary.matchesPlayed++;
         summary.erumode.matchesPlayed++;
         summary.erumode.totalSongs += row.songs;
+        summary.erumode.overallPerformance += row.performance * row.songs;
 
         const opportunities = row.songs * answerTypeCount;
         erumodeOpportunities[key] += opportunities;
@@ -139,6 +153,7 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
           mode: match.mode,
           songs: row.songs,
           guessRate: row.guessRate,
+          performance: row.performance,
         });
       }
     } else {
@@ -151,6 +166,7 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
         summary.ngmc.matchesPlayed++;
         summary.ngmc.totalSongs += row.songs;
         summary.ngmc.totalCorrect += row.correct;
+        summary.ngmc.overallPerformance += row.performance * row.songs;
         if (atk) {
           summary.ngmc.totalTaken += atk.taken;
           summary.ngmc.totalEffTaken += atk.effTaken;
@@ -166,6 +182,7 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
           songs: row.songs,
           correct: row.correct,
           guessRate: row.guessRate,
+          performance: row.performance,
           ...(atk
             ? { taken: atk.taken, effTaken: atk.effTaken, blocked: atk.blocked, effBlocked: atk.effBlocked }
             : {}),
@@ -178,8 +195,14 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
   for (const s of summaries) {
     const key = norm(s.uname);
     s.ngmc.overallGuessRate = s.ngmc.totalSongs ? (100 * s.ngmc.totalCorrect) / s.ngmc.totalSongs : 0;
+    // The Performance accumulators hold Σ(performance × songs), so dividing
+    // by the mode's own song count turns them into songs-weighted means.
+    s.ngmc.overallPerformance = s.ngmc.totalSongs ? s.ngmc.overallPerformance / s.ngmc.totalSongs : 0;
     const opp = erumodeOpportunities[key] ?? 0;
     s.erumode.overallGuessRate = opp ? (100 * (erumodeCorrectOpportunities[key] ?? 0)) / opp : 0;
+    s.erumode.overallPerformance = s.erumode.totalSongs
+      ? s.erumode.overallPerformance / s.erumode.totalSongs
+      : 0;
     s.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }
   summaries.sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.uname.localeCompare(b.uname));

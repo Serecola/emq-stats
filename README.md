@@ -6,9 +6,13 @@ Next.js app for tracking EMQ team-battle attack/block stats. Two sections:
   shows the full stats table (Correct / Attacks / Blocks / Effective
   variants), with a click-through modal per player listing every song they
   attacked on and which team it hit.
-- **Admin** (`/admin`) — password-protected. Create/edit/delete matches:
-  set the team rosters and paste or upload the raw EMQ song-history JSON
-  export(s) for that match.
+- **Admin** (`/admin`) — password-protected, split into two sections:
+  - **Tour Manager** (`/admin`) — create/edit/delete tournaments: set the team
+    rosters and paste or upload the raw EMQ song-history JSON export(s) for
+    that match.
+  - **Player Manager** (`/admin/players`) — per-gamemode ladder management:
+    assign each player's **Set Rank** and compare it against their computed
+    **Expected Rank** and promotion **Expectation**.
 
 ## Data layer
 
@@ -47,6 +51,46 @@ Visit `http://localhost:3000` for the viewer, `/admin` for the admin panel.
    `TURSO_AUTH_TOKEN`).
 3. Deploy. `/admin` is gated by `middleware.ts` using the session cookie set
    at `/admin/login`.
+
+## Player Manager ranks
+
+`/admin/players` works inside one gamemode **and** sub-mode at a time (e.g.
+NGMC Random, Erumode Balanced) — there is no mode-level rank, because that's
+the granularity a draft is balanced at and each sub-mode has its own ladder
+(Erumode's Performance is also scored on a different scale).
+
+- **Set Rank** — the admin's own rank for a player in that gamemode + sub-mode.
+  Edited inline in the table (saves on blur/Enter via
+  `PUT /api/admin/player-ranks`) and stored in the `player_set_ranks` table,
+  one row per player per mode *and* sub-mode, keyed by normalized username.
+  Clearing the field removes the rank.
+- **Expected Rank** — what the player's results imply: the songs-weighted mean
+  of their per-tournament Performance rating (`lib/guess-stats.ts`) across the
+  selected gamemode + sub-mode. It uses the same scale as the `(N)` ranks a
+  roster is annotated with, which is what makes the two numbers comparable.
+  Anyone known in the gamemode gets a row even if they've never played that
+  sub-mode (flagged `mode` in the table's **Data** column), so a brand-new
+  sub-mode can be ranked before its first tournament — those rows take their
+  Expected Rank from the whole gamemode as the closest available baseline.
+- **Expectation** — `Expected Rank − Set Rank`, scored with the thresholds in
+  `lib/expectation.ts` and shared with the match Guess Rate table's Expectation
+  column, so the two views can never disagree about a player. Players without a
+  Set Rank show `—` rather than a verdict.
+
+### Set Ranks drive autodraft
+
+The match form's autodrafter (`components/TeamDrafter.tsx`) balances with the
+saved Set Ranks for the tournament's own mode + sub-mode, so a new tournament
+only needs the players list pasted in — every name with a rank is picked up
+automatically, and anyone without one is reported as unranked instead of
+silently taking part. The drafter's Ranks box still works as a per-tournament
+override: pasted ranks win over saved ones (see `mergeHiddenRanks` in
+`lib/balance.ts`), and only names actually listed can enter the draft.
+
+Player identity is the normalized username (the same identity stats aggregate
+by) — there's no cross-match account linking, so a name that's spelled
+differently in one match is ranked as a separate player unless that match's
+renames map reconciles it.
 
 ## How stats are computed
 

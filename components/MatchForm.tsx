@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
-import type { Match, MatchFile, Mode, Region, Submode } from '@/lib/types';
+import type { Match, MatchFile, Mode, Region, SetRanks, Submode } from '@/lib/types';
 import { MODES, REGIONS, SUBMODES_BY_MODE } from '@/lib/types';
 import { parseTeamsBlob, parsePlayerRanks, teamsToBlob } from '@/lib/teams';
+import { savedRanksFor } from '@/lib/player-ranks';
 import TeamDrafter from '@/components/TeamDrafter';
 import { generateRoundRobin, matchFilesToBracket, isValidTeamCount } from '@/lib/schedule';
 import { formatMatchTitle } from '@/lib/match-title';
@@ -21,7 +22,17 @@ type FileDraft = {
   slot?: string; // bracket matchup this file is attached to
 };
 
-export default function MatchForm({ existing }: { existing?: Match }) {
+export default function MatchForm({
+  existing,
+  savedRanks,
+}: {
+  existing?: Match;
+  // The admin's Set Ranks from the Player Manager, keyed mode -> sub-mode ->
+  // normalized name -> rank. The autodrafter uses the entry matching this
+  // tournament's mode + sub-mode, so a draft is balanced with the ranks that
+  // were assigned for the exact gamemode it's for.
+  savedRanks?: SetRanks;
+}) {
   const router = useRouter();
   const [name, setName] = useState(existing?.name ?? '');
   const [date, setDate] = useState(existing?.date ?? '');
@@ -457,8 +468,14 @@ export default function MatchForm({ existing }: { existing?: Match }) {
       )}
       {teamSource === 'draft' && (
         /* Fills `teamsText` with the annotated "Name (rank) ... = total"
-            format, so the ranks it used are carried into playerRanks too. */
-        <TeamDrafter onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))} />
+            format, so the ranks it used are carried into playerRanks too.
+            Ranks come from the Player Manager for the mode + sub-mode picked
+            above, with any pasted ranks table layered on top for overrides. */
+        <TeamDrafter
+          savedRanks={savedRanksFor(savedRanks ?? {}, mode, submode)}
+          savedRanksLabel={`${mode} ${submode}`}
+          onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))}
+        />
       )}
 
       {rounds.length > 0 && (

@@ -1,39 +1,44 @@
 import Link from 'next/link';
 import { listMatches } from '@/lib/store';
-import ModeToggle, { type ModeFilter } from '@/components/ModeToggle';
+import AdminNav from '@/components/AdminNav';
+import ModeToggle from '@/components/ModeToggle';
 import DeleteMatchButton from '@/components/DeleteMatchButton';
-import LogoutButton from '@/components/LogoutButton';
+import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPage({ searchParams }: { searchParams: { mode?: string } }) {
-  const activeFilter: ModeFilter =
-    searchParams.mode === 'NGMC' || searchParams.mode === 'Erumode' ? searchParams.mode : 'all';
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: { mode?: string; submode?: string };
+}) {
+  const filter = parseMatchFilter(searchParams);
 
   const allMatches = await listMatches();
-  const matches =
-    activeFilter === 'all' ? allMatches : allMatches.filter((m) => m.mode === activeFilter);
+  const matches = applyMatchFilter(allMatches, filter);
+  const filterLabel = matchFilterLabel(filter);
 
   return (
     <div className="space-y-6">
+      <AdminNav active="tours" />
+
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Admin</h1>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin/new"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-bg"
-          >
-            + New tournament
-          </Link>
-          <LogoutButton />
-        </div>
+        <h1 className="text-lg font-semibold">Tour Manager</h1>
+        <Link
+          href="/admin/new"
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-bg"
+        >
+          + New tournament
+        </Link>
       </div>
 
-      <ModeToggle active={activeFilter} basePath="/admin" allLabel="All tournaments" />
+      <ModeToggle active={filter} basePath="/admin" allLabel="All tournaments" />
 
       {matches.length === 0 ? (
         <p className="text-sm text-textMuted">
-          {activeFilter === 'all' ? 'No tournaments yet.' : `No ${activeFilter} tournaments yet.`}
+          {allMatches.length === 0
+            ? 'No tournaments yet.'
+            : `No ${filterLabel || 'matching'} tournaments yet.`}
         </p>
       ) : (
         <div className="divide-y divide-borderSub rounded-lg border border-border bg-surface">

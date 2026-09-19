@@ -60,6 +60,15 @@ export interface Match {
   playerRanks: Record<string, number>;
 }
 
+/**
+ * Admin-assigned ladder ranks for the Player Manager, keyed
+ * `mode -> sub-mode -> normalized username -> rank`. Ranks are per
+ * gamemode *and* sub-mode (NGMC Normal, NGMC Random, Erumode Balanced, ...)
+ * because that is the granularity teams are autodrafted at — a player can
+ * legitimately hold a different rank in each.
+ */
+export type SetRanks = Record<string, Record<string, Record<string, number>>>;
+
 // Payload shape used when creating/updating a match from the admin panel.
 export interface MatchInput {
   name: string;

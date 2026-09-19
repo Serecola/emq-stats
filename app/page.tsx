@@ -1,27 +1,27 @@
 import Link from 'next/link';
 import { listMatches } from '@/lib/store';
-import ModeToggle, { type ModeFilter } from '@/components/ModeToggle';
+import ModeToggle from '@/components/ModeToggle';
+import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { mode?: string };
+  searchParams: { mode?: string; submode?: string };
 }) {
-  const activeFilter: ModeFilter =
-    searchParams.mode === 'NGMC' || searchParams.mode === 'Erumode' ? searchParams.mode : 'all';
+  const filter = parseMatchFilter(searchParams);
 
   const raw = await listMatches();
   const allMatches = raw.map(({ files, ...rest }) => ({ ...rest, fileCount: files.length }));
-  const matches =
-    activeFilter === 'all' ? allMatches : allMatches.filter((m) => m.mode === activeFilter);
+  const matches = applyMatchFilter(allMatches, filter);
   const [current, ...past] = matches;
+  const filterLabel = matchFilterLabel(filter);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1.5">
-        <ModeToggle active={activeFilter} basePath="/" allLabel="All tours" />
+        <ModeToggle active={filter} basePath="/" allLabel="All tours" />
       </div>
 
       {!matches.length ? (
@@ -29,7 +29,7 @@ export default async function HomePage({
           <p className="text-sm text-textMuted">
             {allMatches.length === 0
               ? 'No tournaments yet.'
-              : `No ${activeFilter} tournaments yet.`}
+              : `No ${filterLabel || 'matching'} tournaments yet.`}
           </p>
           <Link href="/admin" className="mt-3 inline-block text-sm text-accent underline">
             Add one from the admin panel →

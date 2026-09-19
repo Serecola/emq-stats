@@ -82,6 +82,39 @@ export function ensureSchema(): Promise<void> {
           last_seen TEXT NOT NULL
         )`
       );
+
+      // Admin-assigned ladder ranks, one row per player per gamemode +
+      // sub-mode (a player holds a separate rank in NGMC Normal, NGMC
+      // Random, Erumode Normal, ...). The sub-mode is what teams are
+      // autodrafted from, so ranks are kept per sub-mode rather than per
+      // gamemode. Keyed by the normalized username — the same identity
+      // player stats aggregate by (see lib/player-ranks.ts), since the
+      // game's stable account IDs in the `players` catalog aren't linked to
+      // the roster names.
+      const createPlayerSetRanks = `CREATE TABLE IF NOT EXISTS player_set_ranks (
+        player_key TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        submode TEXT NOT NULL,
+        rank REAL NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (player_key, mode, submode)
+      )`;
+      await db.execute(createPlayerSetRanks);
+
+      // Migrate a table created by an earlier build where ranks were stored
+      // per gamemode only. Those rows have no sub-mode to map to, so they're
+      // dropped (the admin re-assigns per sub-mode) and the table is rebuilt
+      // with the 3-column key — an ALTER alone isn't enough, since the
+      // ON CONFLICT (player_key, mode, submode) upserts need a matching
+      // constraint, not just the extra column.
+      const columns = await db.execute(
+        "SELECT name FROM pragma_table_info('player_set_ranks')"
+      );
+      if (!columns.rows.some((row: any) => row.name === 'submode')) {
+        await db.execute('ALTER TABLE player_set_ranks RENAME TO player_set_ranks_legacy');
+        await db.execute(createPlayerSetRanks);
+        await db.execute('DROP TABLE player_set_ranks_legacy');
+      }
     })();
   }
   return schemaReady;

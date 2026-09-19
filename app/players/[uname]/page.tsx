@@ -2,6 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { listMatches } from '@/lib/store';
 import { findPlayerSummary, type PlayerMatchEntry } from '@/lib/player-stats';
+import {
+  applyMatchFilter,
+  matchFilterLabel,
+  matchFilterQuery,
+  parseMatchFilter,
+} from '@/lib/match-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,11 +15,46 @@ function pct(n: number): string {
   return `${n.toFixed(1)}%`;
 }
 
-export default async function PlayerPage({ params }: { params: { uname: string } }) {
+export default async function PlayerPage({
+  params,
+  searchParams,
+}: {
+  params: { uname: string };
+  searchParams: { mode?: string; submode?: string };
+}) {
   const uname = decodeURIComponent(params.uname);
-  const matches = await listMatches();
-  const player = findPlayerSummary(matches, uname);
-  if (!player) notFound();
+  const filter = parseMatchFilter(searchParams);
+  const allMatches = await listMatches();
+  const player = findPlayerSummary(applyMatchFilter(allMatches, filter), uname);
+  const filterLabel = matchFilterLabel(filter);
+
+  // A valid player can be missing from a filtered view simply because they
+  // never played that mode/sub-mode — offer their unfiltered page instead of
+  // 404ing, and only 404 when the name matches nobody at all.
+  if (!player) {
+    const overall = findPlayerSummary(allMatches, uname);
+    if (!overall) notFound();
+    return (
+      <div className="space-y-4">
+        <Link
+          href={`/players${matchFilterQuery(filter)}`}
+          className="text-xs text-textMuted hover:text-text"
+        >
+          ← All players
+        </Link>
+        <h1 className="text-lg font-semibold">{overall.uname}</h1>
+        <p className="text-sm text-textMuted">
+          No {filterLabel || 'matching'} tournaments played.{' '}
+          <Link
+            href={`/players/${encodeURIComponent(overall.uname)}`}
+            className="text-accent underline"
+          >
+            Show every tournament
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   const ngmcEntries = player.entries.filter((e) => e.mode !== 'Erumode');
   const erumodeEntries = player.entries.filter((e) => e.mode === 'Erumode');
@@ -21,9 +62,15 @@ export default async function PlayerPage({ params }: { params: { uname: string }
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/players" className="text-xs text-textMuted hover:text-text">← All players</Link>
+        <Link
+          href={`/players${matchFilterQuery(filter)}`}
+          className="text-xs text-textMuted hover:text-text"
+        >
+          ← All players
+        </Link>
         <h1 className="mt-2 text-lg font-semibold">{player.uname}</h1>
         <p className="text-xs text-textDim">
+          {filterLabel ? `${filterLabel} · ` : ''}
           {player.matchesPlayed} tournament{player.matchesPlayed !== 1 ? 's' : ''} played
         </p>
       </div>

@@ -36,6 +36,11 @@ const EPS = 1e-9;
 // Math.random never returns 1, but an injectable random might — clamp so
 // floor(r * len) stays a valid index.
 const pickIndex = (r: number, len: number): number => Math.min(len - 1, Math.floor(r * len));
+
+import type { ListedPlayer } from './teams';
+
+const norm = (s: string) => s.toLowerCase().trim();
+
 export interface DraftPlayer {
   name: string;
   rank: number;
@@ -54,6 +59,32 @@ export interface BalanceOptions {
   maxResults?: number; // how many optimal splits to return (default 5)
   timeLimitMs?: number; // search budget (default 1500ms)
   random?: () => number; // injectable for deterministic tests
+}
+
+/**
+ * Fills in a player's rank from the admin's saved Player Manager ranks when
+ * the pasted ranks table doesn't have one for them, and returns the merged
+ * lookup keyed by normalized name.
+ *
+ * This is what makes the saved Set Ranks the source of truth for autodraft:
+ * ranks for the tournament's gamemode + sub-mode (see listSetRanks) are laid
+ * underneath any text pasted into the draft's ranks box, so a one-off
+ * override still wins while an unknown player falls back to their saved rank
+ * instead of being dropped from the draft. Set Ranks not attached to a player
+ * in `listed` are ignored, so a stale entry can never invent a player.
+ */
+export function mergeHiddenRanks(
+  listed: ListedPlayer[],
+  pasted: Record<string, number>,
+  saved: Record<string, number> | null | undefined
+): Record<string, number> {
+  const merged: Record<string, number> = { ...pasted };
+  if (!saved) return merged;
+  for (const player of listed) {
+    const key = norm(player.name);
+    if (merged[key] === undefined && saved[key] !== undefined) merged[key] = saved[key];
+  }
+  return merged;
 }
 
 export function balanceTeams(

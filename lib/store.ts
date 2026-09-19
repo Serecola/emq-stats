@@ -2,7 +2,8 @@ import { nanoid } from 'nanoid';
 import { ensureSchema, getDb } from './db';
 import { formatMatchTitle } from './match-title';
 import { extractCatalogFromFiles } from './catalog';
-import type { Match, MatchInput, Mode, Region, Submode } from './types';
+import { SUBMODES_BY_MODE } from './types';
+import type { Match, MatchInput, Mode, Region, SetRanks, Submode } from './types';
 
 interface MatchRow {
   id: string;
@@ -219,4 +220,60 @@ export async function listCatalogSongs(): Promise<CatalogSong[]> {
     firstSeen: r.first_seen,
     lastSeen: r.last_seen,
   }));
+}
+
+/**
+ * Admin-assigned ladder ranks, keyed `mode -> sub-mode -> normalized
+ * username -> rank` — one rank per player per gamemode *and* sub-mode
+ * (NGMC Normal, NGMC Random, Erumode Balanced, ...), since that is the
+ * granularity a draft is balanced at. See lib/balance.ts and
+ * lib/player-ranks.ts for how the two halves consume this.
+ */
+export async function listSetRanks(): Promise<SetRanks> {
+  await ensureSchema();
+  const res = await getDb().execute(
+    'SELECT player_key, mode, submode, rank FROM player_set_ranks'
+  );
+  const ranks: SetRanks = {};
+  for (const row of res.rows as any[]) {
+    const mode = String(row.mode);
+    const submode = String(row.submode);
+    // Ignore rows for a mode/sub-mode combination this build no longer knows
+    // about (e.g. an option renamed after a rank was saved).
+    if (!(SUBMODES_BY_MODE as Record<string, string[]>)[mode]?.includes(submode)) continue;
+    if (!ranks[mode]) ranks[mode] = {};
+    if (!ranks[mode][submode]) ranks[mode][submode] = {};
+    ranks[mode][submode][row.player_key] = Number(row.rank);
+  }
+  return ranks;
+}
+
+/**
+ * Sets (or, with `rank === null`, clears) one player's rank for a single
+ * gamemode + sub-mode. Only that one row is touched, so ranking a roster for
+ * one sub-mode never disturbs the player's rank in any other.
+ */
+export async function setPlayerSetRank(
+  playerKey: string,
+  mode: Mode,
+  submode: Submode,
+  rank: number | null
+): Promise<void> {
+  await ensureSchema();
+  const db = getDb();
+  if (rank === null) {
+    await db.execute({
+      sql: 'DELETE FROM player_set_ranks WHERE player_key = ? AND mode = ? AND submode = ?',
+      args: [playerKey, mode, submode],
+    });
+    return;
+  }
+  await db.execute({
+    sql: `INSERT INTO player_set_ranks (player_key, mode, submode, rank, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(player_key, mode, submode) DO UPDATE SET
+            rank = excluded.rank,
+            updated_at = excluded.updated_at`,
+    args: [playerKey, mode, submode, rank, new Date().toISOString()],
+  });
 }

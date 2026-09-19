@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
 import type { Team } from '@/lib/types';
+import { expectationFromDiff } from '@/lib/expectation';
+import ExpectationBadge from './ExpectationBadge';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
 
 const norm = (s: string) => s.toLowerCase().trim();
@@ -181,24 +183,10 @@ export default function GuessRateTable({
     render: (r) => <span className="font-medium text-textSub">{r.performance.toFixed(2)}</span>,
   });
 
-  // Expectation = Performance − Current Rank. Only meaningful when the
-  // player has a Current Rank to compare against. PROMOTE/DEMOTE use a
-  // full green/red theme (background + text); EXPECTED stays plain/neutral
-  // text with no badge, since it's meant to read as "nothing notable".
-  const EXPECTATION_STYLES: Record<string, { bg: string; text: string } | null> = {
-    PROMOTE: { bg: 'rgba(34,197,94,0.15)', text: '#22c55e' }, // green
-    'NEAR PROMOTE': { bg: 'rgba(134,239,172,0.12)', text: '#86efac' }, // light green
-    EXPECTED: null, // normal — no badge
-    'NEAR DEMOTE': { bg: 'rgba(252,165,165,0.12)', text: '#fca5a5' }, // light red
-    DEMOTE: { bg: 'rgba(224,82,82,0.15)', text: '#e05252' }, // red
-  };
-  function expectationLabel(diff: number): string {
-    if (diff > 1) return 'PROMOTE';
-    if (diff >= 0.7) return 'NEAR PROMOTE';
-    if (diff >= -0.7) return 'EXPECTED';
-    if (diff >= -1) return 'NEAR DEMOTE';
-    return 'DEMOTE';
-  }
+  // Expectation = Performance − Current Rank, scored by the shared verdict
+  // thresholds (lib/expectation.ts) so the admin Player Manager's
+  // Expected-Rank-vs-Set-Rank verdicts can never drift from these. Only
+  // meaningful when the player has a Current Rank to compare against.
   const expectationColumn = <T extends { uname: string; performance: number }>(): Column<T> => ({
     key: 'expectation',
     label: 'Expectation',
@@ -211,18 +199,7 @@ export default function GuessRateTable({
     render: (r) => {
       const rank = rankOf(r.uname);
       if (rank === null) return '—';
-      const diff = r.performance - rank;
-      const label = expectationLabel(diff);
-      const style = EXPECTATION_STYLES[label];
-      if (!style) return <span className="whitespace-nowrap text-xs text-textMuted">{label}</span>;
-      return (
-        <span
-          className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[0.65rem] font-semibold"
-          style={{ background: style.bg, color: style.text }}
-        >
-          {label}
-        </span>
-      );
+      return <ExpectationBadge label={expectationFromDiff(r.performance - rank)} />;
     },
   });
 
