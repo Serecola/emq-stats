@@ -1,3 +1,4 @@
+import { teamColor } from '@/lib/team-colors';
 import type { MvpStats } from '@/lib/mvp';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -26,7 +27,7 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
             <p key={team.teamIndex} className="text-xs leading-relaxed">
               {team.members.map((m) => (
                 <span key={m.uname} className="mr-1.5 whitespace-nowrap">
-                  <span className="text-textSub">{m.uname}</span>{' '}
+                  <span style={{ color: teamColor(team.teamIndex) }}>{m.uname}</span>{' '}
                   <span className="text-textMuted">({m.playedLike.toFixed(1)})</span>
                 </span>
               ))}
@@ -56,7 +57,9 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
             {stats.mvps.map((p, i) => (
               <p key={p.uname} className="text-xs leading-relaxed">
                 <span className="mr-1">{MEDALS[i]}</span>
-                <span className="font-medium text-text">{p.uname}</span>
+                <span className="font-medium" style={{ color: teamColor(p.teamIndex) }}>
+                  {p.uname}
+                </span>
                 <span className="text-textMuted">
                   : Played like{' '}
                   <span className="font-semibold text-accent">{p.playedLike.toFixed(2)}</span>{' '}

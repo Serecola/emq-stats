@@ -2,7 +2,8 @@ import { nanoid } from 'nanoid';
 import { ensureSchema, getDb } from './db';
 import { formatMatchTitle } from './match-title';
 import { extractCatalogFromFiles } from './catalog';
-import { SUBMODES_BY_MODE } from './types';
+import { MODES, SUBMODES_BY_MODE } from './types';
+import { expectedRanksFor } from './player-ranks';
 import type { Match, MatchInput, Mode, Region, SetRanks, Submode } from './types';
 
 interface MatchRow {
@@ -245,6 +246,36 @@ export async function listSetRanks(): Promise<SetRanks> {
     if (!ranks[mode][submode]) ranks[mode][submode] = {};
     ranks[mode][submode][row.player_key] = Number(row.rank);
   }
+  return ranks;
+}
+
+/**
+ * Expected Ranks for a given gamemode + sub-mode, computed from player
+ * performance across all matches. Keyed `mode -> sub-mode -> normalized
+ * username -> rank`, matching the shape of Set Ranks so they can be used
+ * interchangeably as a fallback in autodraft.
+ *
+ * Returns null for any mode/sub-mode combination with no performance data.
+ */
+export async function listExpectedRanks(): Promise<SetRanks> {
+  await ensureSchema();
+  const allMatches = await listMatches();
+  const ranks: SetRanks = {};
+
+  for (const mode of MODES) {
+    if (!ranks[mode]) ranks[mode] = {};
+    for (const submode of SUBMODES_BY_MODE[mode]) {
+      const submodeMatches = allMatches.filter(
+        (m) => m.mode === mode && m.submode === submode
+      );
+      const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
+      const expected = expectedRanksFor(submodeMatches, gamemodeMatches, mode, submode);
+      if (expected) {
+        ranks[mode][submode] = expected;
+      }
+    }
+  }
+
   return ranks;
 }
 

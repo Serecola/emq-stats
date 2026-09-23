@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import type { MatchStats, PlayerStats, TeamStats } from '@/lib/types';
+import { teamColor } from '@/lib/team-colors';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
-
-const TEAM_COLORS = ['#e0b152', '#4d8fe0', '#7ac97a', '#c97ac9', '#e08d4d', '#5fd1c9'];
 
 type SortKey = 'uname' | 'correct' | 'taken' | 'blocked';
 
@@ -63,7 +62,7 @@ export default function StatsTable({ stats }: { stats: MatchStats }) {
             <TeamRows
               key={ti}
               team={team}
-              color={TEAM_COLORS[ti % TEAM_COLORS.length]}
+              color={teamColor(ti)}
               onSelectPlayer={setActivePlayer}
               sortKey={sortKey}
               sortDir={sortDir}
@@ -133,7 +132,8 @@ function TeamRows({
           <td className="px-3 py-2">
             <button
               onClick={() => onSelectPlayer(m)}
-              className="font-medium underline decoration-dotted decoration-textDim underline-offset-4 hover:text-text hover:decoration-textSub"
+              style={{ color }}
+              className="font-medium underline decoration-dotted decoration-textDim underline-offset-4 hover:!text-text hover:decoration-textSub"
             >
               {m.uname}
             </button>

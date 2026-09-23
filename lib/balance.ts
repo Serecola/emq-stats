@@ -72,17 +72,34 @@ export interface BalanceOptions {
  * override still wins while an unknown player falls back to their saved rank
  * instead of being dropped from the draft. Set Ranks not attached to a player
  * in `listed` are ignored, so a stale entry can never invent a player.
+ *
+ * When `expectedRanks` is provided, players without a Set Rank fall back to
+ * their Expected Rank (computed from their performance) so they can still
+ * participate in the draft rather than being excluded. The priority order is:
+ *   1. Pasted ranks (one-off overrides)
+ *   2. Set Ranks (admin-assigned, per gamemode + sub-mode)
+ *   3. Expected Ranks (computed from player performance, when available)
  */
 export function mergeHiddenRanks(
   listed: ListedPlayer[],
   pasted: Record<string, number>,
-  saved: Record<string, number> | null | undefined
+  saved: Record<string, number> | null | undefined,
+  expectedRanks?: Record<string, number> | null
 ): Record<string, number> {
   const merged: Record<string, number> = { ...pasted };
   if (!saved) return merged;
   for (const player of listed) {
     const key = norm(player.name);
     if (merged[key] === undefined && saved[key] !== undefined) merged[key] = saved[key];
+  }
+  // Fall back to Expected Ranks for players still missing a rank.
+  if (expectedRanks) {
+    for (const player of listed) {
+      const key = norm(player.name);
+      if (merged[key] === undefined && expectedRanks[key] !== undefined) {
+        merged[key] = expectedRanks[key];
+      }
+    }
   }
   return merged;
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
 import type { Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
+import { teamColor } from '@/lib/team-colors';
 import ExpectationBadge from './ExpectationBadge';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
 
@@ -159,6 +160,19 @@ export default function GuessRateTable({
   };
   const rankOf = (uname: string): number | null => playerRanks[norm(uname)] ?? null;
 
+  // Which team the player belongs to (index into `teams`), or -1 when they're
+  // on none. Their name is tinted with that team's shared color (see
+  // lib/team-colors) so a player's team is identifiable in this table's
+  // cross-team ordering and matches the Results / Attacks & Blocks views.
+  const teamIndexOf = (uname: string): number => {
+    const key = norm(uname);
+    return teams.findIndex((team) => team.some((p) => norm(p) === key));
+  };
+  const colorOf = (uname: string): string | undefined => {
+    const ti = teamIndexOf(uname);
+    return ti === -1 ? undefined : teamColor(ti);
+  };
+
   const tierColumn = <T extends { uname: string }>(): Column<T> => ({
     key: 'tier',
     label: 'Tier',
@@ -206,7 +220,12 @@ export default function GuessRateTable({
   if (stats.mode === 'Erumode') {
     const columns: Column<ErumodeGuessRow>[] = [
       tierColumn<ErumodeGuessRow>(),
-      { key: 'uname', label: 'Player', accessor: (r) => r.uname.toLowerCase(), render: (r) => r.uname },
+      {
+        key: 'uname',
+        label: 'Player',
+        accessor: (r) => r.uname.toLowerCase(),
+        render: (r) => <span style={{ color: colorOf(r.uname) }}>{r.uname}</span>,
+      },
       rankColumn<ErumodeGuessRow>(),
       performanceColumn<ErumodeGuessRow>(),
       expectationColumn<ErumodeGuessRow>(),
@@ -240,7 +259,12 @@ export default function GuessRateTable({
 
   const columns: Column<NgmcGuessRow>[] = [
     tierColumn<NgmcGuessRow>(),
-    { key: 'uname', label: 'Player', accessor: (r) => r.uname.toLowerCase(), render: (r) => r.uname },
+    {
+      key: 'uname',
+      label: 'Player',
+      accessor: (r) => r.uname.toLowerCase(),
+      render: (r) => <span style={{ color: colorOf(r.uname) }}>{r.uname}</span>,
+    },
     rankColumn<NgmcGuessRow>(),
     performanceColumn<NgmcGuessRow>(),
     expectationColumn<NgmcGuessRow>(),

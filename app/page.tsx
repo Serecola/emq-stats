@@ -31,9 +31,6 @@ export default async function HomePage({
               ? 'No tournaments yet.'
               : `No ${filterLabel || 'matching'} tournaments yet.`}
           </p>
-          <Link href="/admin" className="mt-3 inline-block text-sm text-accent underline">
-            Add one from the admin panel →
-          </Link>
         </div>
       ) : (
         <div className="space-y-8">

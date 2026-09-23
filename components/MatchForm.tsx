@@ -404,79 +404,98 @@ export default function MatchForm({
         )}
       </div>
 
-        {/* Segmented source toggle — "Paste teams" (the textarea) vs "Auto-draft"
-            (TeamDrafter). Only one is shown at a time; the toggle itself is
-            intentionally NOT reset when switching back and forth, so a drafted
-            result keeps sitting in `teamsText` even while the drafter is shown. */}
-        <div className="mb-2 flex items-center gap-1.5">
-          {(['paste', 'draft'] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setTeamSource(opt)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                teamSource === opt
-                  ? 'bg-accent text-bg'
-                  : 'border border-border text-textMuted hover:border-textSub hover:text-text'
-              }`}
-            >
-              {opt === 'paste' ? 'Paste teams' : 'Auto-draft teams'}
-            </button>
-          ))}
-        </div>
-        {teamSource === 'paste' && (
-        <div>
-          <label className="mb-1 block text-xs font-medium text-textMuted">
-            Teams <span className="text-textDim">(paste the whole roster — score numbers are ignored)</span>
-          </label>
-          <textarea
-          value={teamsText}
-          onChange={(e) => setTeamsText(e.target.value)}
-          placeholder={
-            'Tommy (11) JerryTheRisu (6) hopefortomorrow (5) = 22 ivesoundfan (9) wailing (6) KappuChinooo (6) = 21 patt (11) Memories (9) carmanhan (1) = 21 Serecola (10) AJ1703 (6) Kirivert (5) = 21'
-          }
-          rows={4}
-          className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-3 py-2 font-mono text-xs outline-none focus:border-textSub"
-        />
-        {parsedTeams.length > 0 && !isValidTeamCount(parsedTeams.length) && (
-          <p className="mt-1 text-xs text-taken">
-            Tournaments must have exactly 4 or 6 teams — currently parsing {parsedTeams.length}.
-          </p>
-        )}
-        {parsedTeams.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {parsedTeams.map((t, i) => (
-              <span
-                key={i}
-                className="rounded-full border border-border bg-surfaceAlt px-2.5 py-1 text-xs text-textSub"
-              >
-                <span className="font-semibold text-text">Team {i + 1}:</span>{' '}
-                {t
-                  .map((n) => {
-                    const r = parsedPlayerRanks[n.toLowerCase().trim()];
+                {existing ? (
+          // Edit mode — teams are already set on the match; display them
+          // read-only rather than offering paste/autodraft again.
+          <div>
+            <label className="mb-1 block text-xs font-medium text-textMuted">
+              Teams
+            </label>
+            <div className="mt-2 space-y-1 rounded-md border border-border bg-surfaceAlt px-3 py-2 font-mono text-xs">
+              {existing.teams.map((team, i) => (
+                <div key={i}>
+                  <span className="font-semibold text-text">Team {i + 1}:</span>{' '}
+                  {team.map((n) => {
+                    const r = existing.playerRanks?.[n.toLowerCase().trim()];
                     return r !== undefined ? `${n} (${r})` : n;
-                  })
-                  .join(', ')}
-              </span>
-            ))}
+                  }).join(', ')}
+                </div>
+              ))}
+            </div>
           </div>
+        ) : (
+          <>
+            {/* Segmented source toggle — "Paste teams" (the textarea) vs "Auto-draft"
+                (TeamDrafter). Only one is shown at a time; the toggle itself is
+                intentionally NOT reset when switching back and forth, so a drafted
+                result keeps sitting in `teamsText` even while the drafter is shown. */}
+            <div className="mb-2 flex items-center gap-1.5">
+              {(['paste', 'draft'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setTeamSource(opt)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    teamSource === opt
+                      ? 'bg-accent text-bg'
+                      : 'border border-border text-textMuted hover:border-textSub hover:text-text'
+                  }`}
+                >
+                  {opt === 'paste' ? 'Paste teams' : 'Auto-draft teams'}
+                </button>
+              ))}
+            </div>
+            {teamSource === 'paste' && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-textMuted">
+                Teams <span className="text-textDim">(paste the whole roster — score numbers are ignored)</span>
+              </label>
+              <textarea
+              value={teamsText}
+              onChange={(e) => setTeamsText(e.target.value)}
+              placeholder={
+                'Tommy (11) JerryTheRisu (6) hopefortomorrow (5) = 22 ivesoundfan (9) wailing (6) KappuChinooo (6) = 21 patt (11) Memories (9) carmanhan (1) = 21 Serecola (10) AJ1703 (6) Kirivert (5) = 21'
+              }
+              rows={4}
+              className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-3 py-2 font-mono text-xs outline-none focus:border-textSub"
+            />
+              {parsedTeams.length > 0 && !isValidTeamCount(parsedTeams.length) && (
+                <p className="mt-1 text-xs text-taken">
+                  Tournaments must have exactly 4 or 6 teams — currently parsing {parsedTeams.length}.
+                </p>
+              )}
+              {parsedTeams.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {parsedTeams.map((t, i) => (
+                    <span
+                      key={i}
+                      className="rounded-full border border-border bg-surfaceAlt px-2.5 py-1 text-xs text-textSub"
+                    >
+                      <span className="font-semibold text-text">Team {i + 1}:</span>{' '}
+                      {t
+                        .map((n) => {
+                          const r = parsedPlayerRanks[n.toLowerCase().trim()];
+                          return r !== undefined ? `${n} (${r})` : n;
+                        })
+                        .join(', ')}
+                    </span>
+                  ))}
+                </div>
+              )}
+                                          {teamsText.trim() && parsedTeams.length === 0 && (
+                <p className="mt-1 text-xs text-taken">Couldn't parse any teams from that text.</p>
+              )}
+            </div>
+            )}
+            {teamSource === 'draft' && (
+              <TeamDrafter
+                savedRanks={savedRanksFor(savedRanks ?? {}, mode, submode)}
+                savedRanksLabel={`${mode} ${submode}`}
+                onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))}
+              />
+            )}
+          </>
         )}
-        {teamsText.trim() && parsedTeams.length === 0 && (
-          <p className="mt-1 text-xs text-taken">Couldn't parse any teams from that text.</p>
-        )}
-        </div>
-      )}
-      {teamSource === 'draft' && (
-        /* Fills `teamsText` with the annotated "Name (rank) ... = total"
-            format, so the ranks it used are carried into playerRanks too.
-            Ranks come from the Player Manager for the mode + sub-mode picked
-            above, with any pasted ranks table layered on top for overrides. */
-        <TeamDrafter
-          savedRanks={savedRanksFor(savedRanks ?? {}, mode, submode)}
-          savedRanksLabel={`${mode} ${submode}`}
-          onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))}
-        />
-      )}
 
       {rounds.length > 0 && (
         <div>

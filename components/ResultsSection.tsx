@@ -1,3 +1,5 @@
+import { norm } from '@/lib/stats';
+import { teamColor } from '@/lib/team-colors';
 import type { MatchResults, TeamResult } from '@/lib/results';
 
 const PODIUM_STYLES = [
@@ -6,7 +8,18 @@ const PODIUM_STYLES = [
   { place: '3rd', bg: 'bg-[#c97a4d]/10', border: 'border-[#c97a4d]/40', text: 'text-[#c97a4d]', order: 'sm:order-3' },
 ];
 
-export default function ResultsSection({ results }: { results: MatchResults }) {
+export default function ResultsSection({
+  results,
+  playerRanks,
+}: {
+  results: MatchResults;
+  playerRanks: Record<string, number>;
+}) {
+  // Each player's Current Rank — the "(N)" pasted next to their name in the
+  // roster (parsed into playerRanks, see lib/teams.ts) — looked up by
+  // normalized username, the same identity the MVP and Guess Rate tables use.
+  const rankOf = (name: string): number | null => playerRanks[norm(name)] ?? null;
+
   if (!results.hasScores) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center text-sm text-textMuted">
@@ -19,6 +32,8 @@ export default function ResultsSection({ results }: { results: MatchResults }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Every name on the podium carries its team's color, so the card ties
+            back to the same player's row in the table below. */}
         {results.podium.map((team, i) => (
           <div
             key={team.teamIndex}
@@ -27,8 +42,17 @@ export default function ResultsSection({ results }: { results: MatchResults }) {
             <div className={`text-xs font-semibold uppercase tracking-wide ${PODIUM_STYLES[i].text}`}>
               {PODIUM_STYLES[i].place}
             </div>
-            <div className="mt-1 truncate text-base font-semibold">{team.label}&apos;s team</div>
-            <div className="mt-1 text-xs text-textMuted">{team.members.join(', ')}</div>
+            <div className="mt-1 truncate text-base font-semibold">
+              <span style={{ color: teamColor(team.teamIndex) }}>{team.label}</span>&apos;s team
+            </div>
+            <div className="mt-1 text-xs text-textMuted">
+              {team.members.map((name, j) => (
+                <span key={`${name}-${j}`}>
+                  {j > 0 && ', '}
+                  <span style={{ color: teamColor(team.teamIndex) }}>{name}</span>
+                </span>
+              ))}
+            </div>
             <div className="mt-2 text-sm text-textSub">
               {team.matchWins}-{team.matchLosses}-{team.matchTies} · {team.pts} pts
             </div>
@@ -60,7 +84,20 @@ export default function ResultsSection({ results }: { results: MatchResults }) {
                 }`}
               >
                 <td className="px-3 py-2 font-medium text-textSub">{r.rank}</td>
-                <td className="px-3 py-2 font-medium">{r.members.join(', ')}</td>
+                <td className="px-3 py-2 font-medium">
+                  {r.members.map((name, i) => {
+                    const rank = rankOf(name);
+                    return (
+                      <span key={`${name}-${i}`} className="whitespace-nowrap">
+                        {i > 0 && <span className="text-textDim">, </span>}
+                        <span style={{ color: teamColor(r.teamIndex) }}>{name}</span>
+                        {rank !== null && (
+                          <span className="ml-1 text-xs font-normal text-textDim">({rank})</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </td>
                 <td className="px-3 py-2 text-right text-textSub">
                   {r.matchWins} - {r.matchLosses} - {r.matchTies}
                 </td>

@@ -145,5 +145,5 @@ export function teamsToBlob(teams: string[][], ranks?: Record<string, number>): 
       const total = team.reduce((sum, name) => sum + (ranks![norm(name)] ?? 0), 0);
       return `${parts.join(' ')} = ${total}`;
     })
-    .join(' ');
+    .join('\n'); // Changed from ' ' to '\n' to put teams on separate lines
 }

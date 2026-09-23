@@ -27,10 +27,12 @@ const norm = (s: string) => s.toLowerCase().trim();
 export default function TeamDrafter({
   onApply,
   savedRanks,
+  expectedRanks,
   savedRanksLabel,
 }: {
   onApply: (teams: string[][], ranks: Record<string, number>) => void;
   savedRanks?: Record<string, number> | null;
+  expectedRanks?: Record<string, number> | null;
   savedRanksLabel?: string;
 }) {
   const [playersText, setPlayersText] = useState('');
@@ -45,9 +47,10 @@ export default function TeamDrafter({
   // Pasted ranks win; the saved Set Ranks fill in everyone the box didn't
   // cover. Set Ranks for names not in this roster are ignored (see
   // mergeHiddenRanks), so only listed players can enter the draft.
+  // Expected Ranks are used as a final fallback for players without a Set Rank.
   const ranks = useMemo(
-    () => mergeHiddenRanks(listed, rankList.ranks, savedRanks),
-    [listed, rankList, savedRanks]
+    () => mergeHiddenRanks(listed, rankList.ranks, savedRanks, expectedRanks),
+    [listed, rankList, savedRanks, expectedRanks]
   );
 
   const { ranked, unranked, unsupported, fromSaved } = useMemo(() => {

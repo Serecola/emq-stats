@@ -126,3 +126,36 @@ export function savedRanksFor(setRanks: SetRanks, mode: string, submode: string)
   const ranks = setRanks[mode]?.[submode];
   return ranks && Object.keys(ranks).length > 0 ? ranks : null;
 }
+
+/**
+ * Expected Ranks for players in one gamemode + sub-mode as a normalized-name
+ * -> rank map, for use as a fallback in autodraft when a player has no Set
+ * Rank. Computed from the songs-weighted mean of each player's Performance
+ * across tournaments in this gamemode + sub-mode (or the whole gamemode as a
+ * baseline for players who haven't played this sub-mode yet).
+ *
+ * Returns null when there's no data to compute Expected Ranks from, so callers
+ * can distinguish "no ranks assigned yet" from "no performance data available".
+ */
+export function expectedRanksFor(
+  submodeMatches: Match[],
+  gamemodeMatches: Match[],
+  mode: string,
+  submode: string
+): Record<string, number> | null {
+  const isErumode = mode === 'Erumode';
+  const allStats = computeAllPlayerStats(submodeMatches.length ? submodeMatches : gamemodeMatches);
+  if (!allStats.length) return null;
+
+  const ranks: Record<string, number> = {};
+  for (const p of allStats) {
+    const aggregate = isErumode ? p.erumode : p.ngmc;
+    if (aggregate.matchesPlayed === 0) continue;
+    // Use the submode aggregate when available, otherwise the gamemode aggregate.
+    const expectedRank = aggregate.overallPerformance;
+    if (expectedRank > 0) {
+      ranks[norm(p.uname)] = expectedRank;
+    }
+  }
+  return Object.keys(ranks).length > 0 ? ranks : null;
+}

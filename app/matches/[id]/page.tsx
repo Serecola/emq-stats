@@ -107,7 +107,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
         {resultsError ? (
           <ErrorBox label="Results" err={resultsError} />
         ) : results ? (
-          <ResultsSection results={results} />
+          <ResultsSection results={results} playerRanks={match.playerRanks} />
         ) : null}
 
         {mvpError ? (

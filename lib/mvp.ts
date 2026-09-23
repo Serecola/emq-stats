@@ -21,6 +21,7 @@ import type { Match } from './types';
  */
 export interface MvpPlayer {
   uname: string;
+  teamIndex: number; // roster slot they played in — drives their team color
   playedLike: number;
   rank: number;
   diff: number; // playedLike − rank
@@ -80,7 +81,7 @@ export function computeMvpStats(
       if (rank === undefined) continue;
       expectedRank += rank;
       hasRanks = true;
-      mvps.push({ uname, playedLike: perf, rank, diff: perf - rank });
+      mvps.push({ uname, teamIndex, playedLike: perf, rank, diff: perf - rank });
     }
 
     if (members.length === 0) return;
