@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { listMatches } from '@/lib/store';
-import AdminNav from '@/components/AdminNav';
 import ModeToggle from '@/components/ModeToggle';
 import DeleteMatchButton from '@/components/DeleteMatchButton';
+import LogoutButton from '@/components/LogoutButton';
 import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
 
 export const dynamic = 'force-dynamic';
@@ -20,16 +20,20 @@ export default async function AdminPage({
 
   return (
     <div className="space-y-6">
-      <AdminNav active="tours" />
-
-      <div className="flex items-center justify-between">
+      {/* The Tour Manager / Player Manager switcher lives in the header (see
+          components/SiteNav.tsx) once you're inside /admin, so this page no
+          longer repeats it — the log-out control moves into the title row. */}
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">Tour Manager</h1>
-        <Link
-          href="/admin/new"
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-bg"
-        >
-          + New tournament
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/new"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-bg"
+          >
+            + New tournament
+          </Link>
+          <LogoutButton />
+        </div>
       </div>
 
       <ModeToggle active={filter} basePath="/admin" allLabel="All tournaments" />

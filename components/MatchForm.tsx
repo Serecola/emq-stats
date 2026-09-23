@@ -8,6 +8,8 @@ import { MODES, REGIONS, SUBMODES_BY_MODE } from '@/lib/types';
 import { parseTeamsBlob, parsePlayerRanks, teamsToBlob } from '@/lib/teams';
 import { savedRanksFor } from '@/lib/player-ranks';
 import TeamDrafter from '@/components/TeamDrafter';
+import BracketTeamRow from '@/components/BracketTeamRow';
+import DownloadFilesButton from '@/components/DownloadFilesButton';
 import { generateRoundRobin, matchFilesToBracket, isValidTeamCount } from '@/lib/schedule';
 import { formatMatchTitle } from '@/lib/match-title';
 import { extractUsernames } from '@/lib/stats';
@@ -73,6 +75,10 @@ export default function MatchForm({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [teamSource, setTeamSource] = useState<'paste' | 'draft'>('paste');
+  // Which team's cells the bracket highlights right now, or null when the
+  // pointer is off it — same behaviour as the read-only bracket on the match
+  // page, so one squad's whole set of games can be read off either view.
+  const [hoveredTeam, setHoveredTeam] = useState<number | null>(null);
 
   const parsedTeams = useMemo(() => parseTeamsBlob(teamsText), [teamsText]);
   // Merge over any existing ranks so re-saving without re-annotating the
@@ -189,10 +195,6 @@ export default function MatchForm({
       delete next[id];
       return next;
     });
-  }
-
-  function updateFileLabel(id: string, label: string) {
-    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, label } : f)));
   }
 
   // Entering a score for a matchup that has no file yet creates a
@@ -499,22 +501,29 @@ export default function MatchForm({
 
       {rounds.length > 0 && (
         <div>
-          <label className="mb-1 block text-xs font-medium text-textMuted">
-            Bracket{' '}
-            <span className="text-textDim">
-              (attach a JSON export and enter scores for each matchup)
-            </span>
-          </label>
-          <div className="space-y-5">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-textMuted">
+              Bracket{' '}
+              <span className="text-textDim">
+                (attach a JSON export and enter scores for each matchup)
+              </span>
+            </label>
+            {/* One click for every export attached to this tournament, matched
+                to a fixture or not — the uploads are otherwise only editable
+                here, so this is the way to get them back out, zipped up under
+                the tournament's own name. */}
+            <DownloadFilesButton files={files} archiveName={previewTitle || name} />
+          </div>
+          <div className="space-y-3" onMouseLeave={() => setHoveredTeam(null)}>
             {rounds.map((round) => (
               <div key={`${round.round}-${round.cycle}`}>
-                <h3 className="mb-2 text-sm font-semibold text-text">
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-textMuted">
                   Round {round.round}
                   {round.cycle > 1 && (
-                    <span className="ml-1.5 text-xs font-normal text-textDim">(reverse)</span>
+                    <span className="ml-1.5 font-normal normal-case text-textDim">(reverse)</span>
                   )}
                 </h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {round.matchups.map((m) => {
                     const file = assignment.bySlot[m.slot];
                     const draft = file ? draftById.get(file.id) : undefined;
@@ -524,33 +533,44 @@ export default function MatchForm({
                     const bNum = bVal.trim() !== '' && !isNaN(Number(bVal)) ? Number(bVal) : null;
                     const aWin = aNum !== null && bNum !== null && aNum > bNum;
                     const bWin = aNum !== null && bNum !== null && bNum > aNum;
+                    const tie = aNum !== null && bNum !== null && aNum === bNum;
+                    const bothScored = aNum !== null && bNum !== null;
+                    // Same card treatment as the match page's bracket: dashed and
+                    // faded until both scores are in, solid once played.
                     return (
                       <div
                         key={m.slot}
-                        className="rounded-lg border border-border bg-surface px-3 py-2"
+                        className={`rounded-md border px-2 py-1 ${
+                          bothScored
+                            ? 'border-border bg-surface'
+                            : 'border-dashed border-border bg-surface/40'
+                        }`}
                       >
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                          <span className="text-[0.65rem] uppercase tracking-wide text-textDim">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.6rem] uppercase tracking-wide text-textDim">
                             Match #{m.slot.replace(/^r\d+m/, '')}
                           </span>
                           {draft ? (
                             <div className="flex items-center gap-2">
-                              <input
-                                value={draft.label}
-                                onChange={(e) => updateFileLabel(draft.id, e.target.value)}
-                                placeholder="Label"
-                                className="w-28 rounded border border-border bg-surfaceAlt px-1.5 py-0.5 text-xs outline-none focus:border-textSub"
-                              />
+                              {/* The upload's own name, read-only: exports are
+                                  never renamed, and the download button hands
+                                  them back under exactly this name. */}
+                              <span
+                                title={draft.label || undefined}
+                                className="max-w-[11rem] truncate text-[0.65rem] text-textDim"
+                              >
+                                {draft.label || 'Untitled'}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => removeFile(draft.id)}
-                                className="text-xs text-textDim hover:text-taken"
+                                className="text-[0.65rem] text-textDim hover:text-taken"
                               >
                                 Remove
                               </button>
                             </div>
                           ) : (
-                            <label className="cursor-pointer text-xs text-accent hover:underline">
+                            <label className="cursor-pointer text-[0.65rem] text-accent hover:underline">
                               Attach JSON
                               <input
                                 type="file"
@@ -564,20 +584,36 @@ export default function MatchForm({
                             </label>
                           )}
                         </div>
-                        <div className="space-y-1">
-                          <AdminScoreRow
-                            label={m.labelA}
-                            value={aVal}
-                            win={aWin}
-                            onChange={(v) => setScoreForSlot(m.slot, norm(m.labelA), v)}
-                          />
-                          <AdminScoreRow
-                            label={m.labelB}
-                            value={bVal}
-                            win={bWin}
-                            onChange={(v) => setScoreForSlot(m.slot, norm(m.labelB), v)}
-                          />
-                        </div>
+                        <BracketTeamRow
+                          members={parsedTeams[m.teamAIndex]}
+                          teamIndex={m.teamAIndex}
+                          result={tie ? 'tie' : aWin ? 'win' : null}
+                          highlighted={hoveredTeam === m.teamAIndex}
+                          onHover={setHoveredTeam}
+                          score={
+                            <ScoreInput
+                              value={aVal}
+                              win={aWin}
+                              tie={tie}
+                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelA), v)}
+                            />
+                          }
+                        />
+                        <BracketTeamRow
+                          members={parsedTeams[m.teamBIndex]}
+                          teamIndex={m.teamBIndex}
+                          result={tie ? 'tie' : bWin ? 'win' : null}
+                          highlighted={hoveredTeam === m.teamBIndex}
+                          onHover={setHoveredTeam}
+                          score={
+                            <ScoreInput
+                              value={bVal}
+                              win={bWin}
+                              tie={tie}
+                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelB), v)}
+                            />
+                          }
+                        />
                       </div>
                     );
                   })}
@@ -651,34 +687,37 @@ export default function MatchForm({
   );
 }
 
-function AdminScoreRow({
-  label,
+/**
+ * The editable counterpart of the match page's score pill: the winner carries
+ * the accent fill, a tie is neutral — but it stays an input, so the admin types
+ * each matchup's score in place. `win` / `tie` are the same comparisons the
+ * read-only bracket makes, so both views agree on who won a fixture.
+ */
+function ScoreInput({
   value,
   win,
+  tie,
   onChange,
 }: {
-  label: string;
   value: string;
   win: boolean;
+  tie: boolean;
   onChange: (v: string) => void;
 }) {
   return (
-    <div
-      className={`flex items-center justify-between gap-2 rounded px-2 py-1 ${
-        win ? 'bg-accent/10' : ''
+    <input
+      type="number"
+      inputMode="numeric"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="–"
+      className={`w-12 flex-shrink-0 rounded border px-1 text-center text-xs font-semibold outline-none ${
+        win
+          ? 'border-accent bg-accent text-bg'
+          : tie
+            ? 'border-border bg-surfaceAlt text-text focus:border-textSub'
+            : 'border-border bg-surfaceAlt text-textMuted focus:border-textSub'
       }`}
-    >
-      <span className={`truncate text-sm ${win ? 'font-semibold text-text' : 'text-textSub'}`}>
-        {label}
-      </span>
-      <input
-        type="number"
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="—"
-        className="w-14 rounded border border-border bg-surfaceAlt px-1.5 py-0.5 text-center text-sm outline-none focus:border-textSub"
-      />
-    </div>
+    />
   );
 }

@@ -21,8 +21,13 @@ const tabClass = (isActive: boolean): string =>
  * Server-rendered as plain <Link>s, like ModeToggle — the active tab is
  * passed down rather than derived, so each page states where it lives.
  *
- * The log-out control rides along here so every admin screen has it without
- * each page repeating the header markup.
+ * The Tour Manager landing page (`/admin`) no longer renders this: its tab row
+ * was doing the same job as the header switcher (components/SiteNav.tsx), which
+ * shows the same two sections on every /admin route. Pages that still use it
+ * are the Player Manager and the tournament create/edit screens.
+ *
+ * The log-out control rides along here so admin screens that use the tabs don't
+ * each have to repeat the header markup.
  */
 export default function AdminNav({ active }: { active: AdminTab }) {
   return (
