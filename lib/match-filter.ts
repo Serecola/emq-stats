@@ -10,12 +10,11 @@ export type ModeFilter = 'all' | Mode;
 export type SubmodeFilter = 'all' | string;
 
 /**
- * The two-level tournament filter shared by every list view: mode first
- * (NGMC / Erumode), then that mode's own sub-modes — NGMC splits into
- * Normal / Random, Erumode into Normal / Random / Balanced / No Vocal.
- *
- * A sub-mode is only meaningful *within* a mode ("Normal" means different
- * things in NGMC and Erumode), so it is ignored unless a mode is selected.
+ * The tournament filter shared by every list view: mode + sub-mode — NGMC
+ * splits into Normal / Random, Erumode into Normal / Random / Balanced /
+ * No Vocal. There is no "all" view on the player pages: they always work
+ * inside exactly one mode + sub-mode, defaulting to the first mode's first
+ * sub-mode (Erumode Normal).
  */
 export interface MatchFilter {
   mode: ModeFilter;
@@ -49,10 +48,10 @@ export function parseMatchFilter(params: { mode?: string; submode?: string }): M
 }
 
 /**
- * Like parseMatchFilter, but never yields the mode-level catch-all — used by
- * views where "all sub-modes" is meaningless. With no sub-mode in the URL any
- * of `modes` is accepted and the first becomes the default; with none at all
- * (or an invalid one) the first entry of `modes` is used.
+ * Like parseMatchFilter, but never yields a catch-all — used by views where
+ * "all modes" (or "all sub-modes") is meaningless. With no mode in the URL
+ * the first entry of `modes` (Erumode) becomes the default, and with no valid
+ * sub-mode for it the first sub-mode of that mode (Normal) does.
  */
 export function parseSubmodeFilter(
   params: { mode?: string; submode?: string },
@@ -69,14 +68,25 @@ export function applyMatchFilter<T extends { mode: Mode; submode: string }>(
   matches: T[],
   filter: MatchFilter
 ): T[] {
-  if (filter.mode === 'all') return matches;
+  if (filter.mode === 'all') {
+    if (filter.submode === 'all') return matches;
+    return matches.filter((m) => m.submode === filter.submode);
+  }
   return matches.filter(
     (m) => m.mode === filter.mode && (filter.submode === 'all' || m.submode === filter.submode)
   );
 }
 
 /**
- * Human-readable name for a filter — "NGMC", "NGMC Normal", or '' when
+ * Whether a filter can match tournaments of `mode` at all.
+ */
+export function filterIncludesMode(filter: MatchFilter, mode: Mode): boolean {
+  if (filter.mode !== 'all' && filter.mode !== mode) return false;
+  return filter.submode === 'all' || SUBMODES_BY_MODE[mode].includes(filter.submode);
+}
+
+/**
+ * Human-readable name for a filter — "Erumode", "Erumode Normal", or '' when
  * unfiltered. Used for empty-state copy and page summaries.
  */
 export function matchFilterLabel(filter: MatchFilter): string {

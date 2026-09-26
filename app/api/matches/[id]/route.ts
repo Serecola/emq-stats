@@ -24,7 +24,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Region must be NA, EU, or Asia.' }, { status: 400 });
   }
   if (!MODES.includes(body.mode)) {
-    return NextResponse.json({ error: 'Mode must be NGMC or Erumode.' }, { status: 400 });
+    return NextResponse.json(
+      { error: `Mode must be ${MODES.join(' or ')}.` },
+      { status: 400 }
+    );
   }
   if (!SUBMODES_BY_MODE[body.mode]?.includes(body.submode)) {
     return NextResponse.json(

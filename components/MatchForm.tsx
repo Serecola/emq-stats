@@ -39,8 +39,12 @@ export default function MatchForm({
   const [name, setName] = useState(existing?.name ?? '');
   const [date, setDate] = useState(existing?.date ?? '');
   const [region, setRegion] = useState<Region>(existing?.region ?? 'NA');
-  const [mode, setMode] = useState<Mode>(existing?.mode ?? 'NGMC');
-  const [submode, setSubmode] = useState<Submode>(existing?.submode ?? SUBMODES_BY_MODE['NGMC'][0]);
+  // Mode/sub-mode defaults follow the gamemode priority order (Erumode first —
+  // MODES in lib/types.ts), same as every other mode picker.
+  const [mode, setMode] = useState<Mode>(existing?.mode ?? MODES[0]);
+  const [submode, setSubmode] = useState<Submode>(
+    existing?.submode ?? SUBMODES_BY_MODE[MODES[0]][0]
+  );
   const [teamsText, setTeamsText] = useState(
     existing ? teamsToBlob(existing.teams, existing.playerRanks) : ''
   );
@@ -264,7 +268,7 @@ export default function MatchForm({
         }
         parsedFiles.push({
           id: file?.id ?? nanoid(6),
-          label: draft?.label || `Round ${m.round}${m.cycle > 1 ? ' (reverse)' : ''}`,
+          label: draft?.label || `Round ${m.displayRound} · ${m.labelA} vs ${m.labelB}`,
           data,
           slot: m.slot,
           ...(hasScores ? { scores: parsedScores } : {}),
@@ -516,12 +520,9 @@ export default function MatchForm({
           </div>
           <div className="space-y-3" onMouseLeave={() => setHoveredTeam(null)}>
             {rounds.map((round) => (
-              <div key={`${round.round}-${round.cycle}`}>
+              <div key={round.displayRound}>
                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-textMuted">
-                  Round {round.round}
-                  {round.cycle > 1 && (
-                    <span className="ml-1.5 font-normal normal-case text-textDim">(reverse)</span>
-                  )}
+                  Round {round.displayRound}
                 </h3>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {round.matchups.map((m) => {
@@ -549,6 +550,7 @@ export default function MatchForm({
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[0.6rem] uppercase tracking-wide text-textDim">
                             Match #{m.slot.replace(/^r\d+m/, '')}
+                            <span className="ml-1 normal-case">· Round {m.displayRound}</span>
                           </span>
                           {draft ? (
                             <div className="flex items-center gap-2">

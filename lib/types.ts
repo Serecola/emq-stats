@@ -5,8 +5,12 @@ export type Team = string[];
 export type Region = 'NA' | 'EU' | 'Asia';
 export const REGIONS: Region[] = ['NA', 'EU', 'Asia'];
 
+// Gamemodes in priority order: Erumode is listed first everywhere modes are
+// offered or displayed — the match form's picker, the tournament-list chips,
+// the /players sub-mode rows, per-mode stat sections, the Player Manager's
+// default selection, ...
 export type Mode = 'NGMC' | 'Erumode';
-export const MODES: Mode[] = ['NGMC', 'Erumode'];
+export const MODES: Mode[] = ['Erumode', 'NGMC'];
 
 // Sub-mode options depend on the tournament's mode.
 export const SUBMODES_BY_MODE: Record<Mode, string[]> = {

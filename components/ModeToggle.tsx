@@ -16,27 +16,20 @@ const chipClass = (isActive: boolean): string =>
   }`;
 
 /**
- * Two-level segmented toggle for the tournament lists: mode first
- * (NGMC / Erumode), then that mode's own sub-modes — NGMC splits into
- * Normal / Random, Erumode into Normal / Random / Balanced / No Vocal.
+ * Segmented toggle for the tournament lists.
  *
- * The sub-mode row only appears once a mode is picked (a sub-mode only means
- * something inside its own mode) and offers "All <mode>" unless
- * `includeAllSubmodes` is false, for views that always work inside one
- * sub-mode (the Player Manager's ranks are per sub-mode).
+ * By default it is two-level: mode first (Erumode / NGMC, in that order), then
+ * that mode's own sub-modes — Erumode into Normal / Random / Balanced / No Vocal,
+ * NGMC into Normal / Random. The sub-mode row only appears once a mode is picked
+ * and offers "All <mode>" unless `includeAllSubmodes` is false.
+ *
+ * Setting `includeAll={false}` and `includeAllSubmodes={false}` drops all catch-all
+ * chips ("All", "All Erumode", "All NGMC"), leaving only concrete modes and concrete
+ * sub-modes — used by `/admin/players` and `/players`.
  *
  * Backed by `?mode=`/`?submode=` query params through plain <Link>s, so the
  * active filter is resolved server-side (via `searchParams`), is
  * bookmarkable/shareable, and works without any client JS.
- *
- * - `active`: the currently-selected filter.
- * - `basePath`: the path to return to for the catch-all option (e.g. "/admin").
- * - `allLabel`: label for the catch-all option (e.g. "All matches").
- * - `includeAll`: set false on views where a catch-all selection makes no
- *   sense — the Player Manager's ranks are per-gamemode, so it offers only
- *   the concrete modes.
- * - `includeAllSubmodes`: set false to drop the "All <mode>" chip, leaving
- *   only the concrete sub-modes.
  */
 export default function ModeToggle({
   active,
@@ -68,15 +61,24 @@ export default function ModeToggle({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        {modes.map((m) => (
-          <Link
-            key={m.value}
-            href={`${basePath}${matchFilterQuery({ mode: m.value, submode: 'all' })}`}
-            className={chipClass(m.value === active.mode)}
-          >
-            {m.label}
-          </Link>
-        ))}
+        {modes.map((m) => {
+          // When clicking a mode chip:
+          // If includeAllSubmodes is false, default to the first submode of that mode.
+          const href =
+            !includeAllSubmodes && m.value !== 'all'
+              ? `${basePath}${matchFilterQuery({ mode: m.value, submode: submodeOptions(m.value)[0] })}`
+              : `${basePath}${matchFilterQuery({ mode: m.value, submode: 'all' })}`;
+
+          return (
+            <Link
+              key={m.value}
+              href={href}
+              className={chipClass(m.value === active.mode)}
+            >
+              {m.label}
+            </Link>
+          );
+        })}
       </div>
 
       {submodes.length > 0 && (

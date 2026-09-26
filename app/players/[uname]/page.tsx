@@ -5,7 +5,7 @@ import type { PlayerMatchEntry } from '@/lib/player-stats';
 import {
   matchFilterLabel,
   matchFilterQuery,
-  parseMatchFilter,
+  parseSubmodeFilter,
 } from '@/lib/match-filter';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,10 @@ export default async function PlayerPage({
   searchParams: { mode?: string; submode?: string };
 }) {
   const uname = decodeURIComponent(params.uname);
-  const filter = parseMatchFilter(searchParams);
+  // Like /players, this view always works inside exactly one mode + sub-mode
+  // (default Erumode Normal) — links in from /players already carry one, so
+  // parseSubmodeFilter only has to clean up hand-edited URLs.
+  const filter = parseSubmodeFilter(searchParams);
   const player = await findPlayerStats(uname, filter);
   const filterLabel = matchFilterLabel(filter);
 
@@ -56,6 +59,10 @@ export default async function PlayerPage({
 
   const ngmcEntries = player.entries.filter((e) => e.mode !== 'Erumode');
   const erumodeEntries = player.entries.filter((e) => e.mode === 'Erumode');
+  // Under a concrete mode + sub-mode filter every entry is that mode's, but
+  // splitting defensively keeps both sections honest for any future caller.
+  const showErumode = filter.mode === 'Erumode' || erumodeEntries.length > 0;
+  const showNgmc = filter.mode !== 'Erumode' || ngmcEntries.length > 0;
 
   return (
     <div className="space-y-6">
@@ -64,7 +71,7 @@ export default async function PlayerPage({
           href={`/players${matchFilterQuery(filter)}`}
           className="text-xs text-textMuted hover:text-text"
         >
-          ← All players
+          ← Players
         </Link>
         <h1 className="mt-2 text-lg font-semibold">{player.uname}</h1>
         <p className="text-xs text-textDim">
@@ -73,7 +80,20 @@ export default async function PlayerPage({
         </p>
       </div>
 
-      {player.ngmc.matchesPlayed > 0 && (
+      {/* Mode priority: Erumode's section is shown before NGMC's everywhere a
+          mode is listed (see MODES in lib/types.ts). */}
+      {showErumode && player.erumode.matchesPlayed > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Guess Rate" value={pct(player.erumode.overallGuessRate)} />
+            <StatCard label="Songs" value={String(player.erumode.totalSongs)} />
+          </div>
+          <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
+        </section>
+      )}
+
+      {showNgmc && player.ngmc.matchesPlayed > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">NGMC</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -104,20 +124,12 @@ export default async function PlayerPage({
         </section>
       )}
 
-      {player.erumode.matchesPlayed > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Guess Rate" value={pct(player.erumode.overallGuessRate)} />
-            <StatCard label="Songs" value={String(player.erumode.totalSongs)} />
-          </div>
-          <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
-        </section>
-      )}
-
-      {player.ngmc.matchesPlayed === 0 && player.erumode.matchesPlayed === 0 && (
-        <p className="text-sm text-textMuted">No tournament data for this player yet.</p>
-      )}
+      {showErumode &&
+        showNgmc &&
+        player.ngmc.matchesPlayed === 0 &&
+        player.erumode.matchesPlayed === 0 && (
+          <p className="text-sm text-textMuted">No tournament data for this player yet.</p>
+        )}
     </div>
   );
 }

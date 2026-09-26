@@ -107,10 +107,13 @@ export interface BracketMatchup {
   //              cycle-major sequence, NOT the round number shown on
   //              screen — see generateRoundRobin. Never derive it from
   //              display order: it is persisted on saved files.
+  displayRound: number; // 1-based sequential round shown on screen — Round
+  //              1..6 for a double round robin (Round 1..5 for 6 teams).
+  //              Unlike `round` it never repeats, so it is what round
+  //              headings, file labels and the stats scope use.
   round: number; // 1-based round within a single round-robin pass. The
-  //                reverse leg repeats the same numbers, so a double
-  //                round robin renders as 1, 1 (reverse), 2, 2 (reverse),
-  //                3, 3 (reverse)
+  //                reverse leg repeats the same numbers, so displayRound
+  //                2 is round 1's rematch, 4 is round 2's, 6 is round 3's.
   cycle: number; // 1-based round-robin cycle this round belongs to
   teamAIndex: number;
   teamBIndex: number;
@@ -119,6 +122,7 @@ export interface BracketMatchup {
 }
 
 export interface BracketRound {
+  displayRound: number; // sequential round number shown on screen (1..6)
   round: number; // round number within its cycle (repeats on the reverse leg)
   cycle: number; // 1-based cycle this leg belongs to, so round + cycle is unique
   matchups: BracketMatchup[];
@@ -170,12 +174,15 @@ export function generateRoundRobin(teams: Team[]): BracketRound[] {
   const base = singleRoundRobinPairs(n);
   const roundsPerCycle = base.length;
   const rounds: BracketRound[] = [];
+  let displayRound = 0;
   for (let r = 0; r < roundsPerCycle; r++) {
     for (let c = 0; c < cycles; c++) {
+      displayRound++;
       const matchups: BracketMatchup[] = base[r].map(([a, b], i) => {
         const [x, y] = c === 1 ? [b, a] : [a, b];
         return {
           slot: bracketSlot(c * roundsPerCycle + r + 1, i),
+          displayRound,
           round: r + 1,
           cycle: c + 1,
           teamAIndex: x,
@@ -184,7 +191,7 @@ export function generateRoundRobin(teams: Team[]): BracketRound[] {
           labelB: teams[y][0],
         };
       });
-      rounds.push({ round: r + 1, cycle: c + 1, matchups });
+      rounds.push({ displayRound, round: r + 1, cycle: c + 1, matchups });
     }
   }
   return rounds;
@@ -276,6 +283,57 @@ export function matchFilesToBracket(
  * what this shape exists to avoid. Slots with no attached file are simply
  * absent, and cards for them render as unplayed.
  */
+export interface StatsScope {
+  // Which displayed rounds are in scope (1-based `displayRound`). Empty =
+  // every round.
+  rounds: number[];
+  // Individually-checked games, as bracket `slot` keys, on top of whatever
+  // `rounds` covers. Empty = no single-game picks.
+  games: string[];
+}
+
+/** True when the scope keeps nothing out — the whole tournament's stats. */
+export function isFullScope(scope: StatsScope): boolean {
+  return scope.rounds.length === 0 && scope.games.length === 0;
+}
+
+/**
+ * Which of `match.files` fall inside `scope`, in the match's own file order.
+ * Files are resolved to bracket fixtures exactly the way the bracket (and the
+ * admin form) attaches them — explicit `slot` first, otherwise the two teams
+ * detected in the file — so the stats slice agrees with the fixtures the
+ * selector's round/game chips were built from. Files that can't be placed on
+ * the bracket only count inside the full scope.
+ */
+export function filesInStatsScope(
+  teams: Team[],
+  files: MatchFile[],
+  renames: Record<string, string>,
+  scope: StatsScope
+): MatchFile[] {
+  if (isFullScope(scope)) return files;
+  const assignment = matchFilesToBracket(teams, files, renames);
+  const slotToRound = new Map<string, number>();
+  for (const matchups of generateRoundRobin(teams).map((r) => r.matchups)) {
+    for (const m of matchups) slotToRound.set(m.slot, m.displayRound);
+  }
+  const roundSet = new Set(scope.rounds);
+  const gameSet = new Set(scope.games);
+  const kept: MatchFile[] = [];
+  for (const file of files) {
+    const entry = Object.entries(assignment.bySlot).find(([, f]) => f.id === file.id);
+    if (!entry) continue; // unmatched files have no round/game — full scope only
+    const [slot] = entry;
+    if (gameSet.has(slot)) {
+      kept.push(file);
+      continue;
+    }
+    const displayRound = slotToRound.get(slot);
+    if (displayRound !== undefined && roundSet.has(displayRound)) kept.push(file);
+  }
+  return kept;
+}
+
 export interface BracketFileSummary {
   label: string;
   scores?: Record<string, number>;
