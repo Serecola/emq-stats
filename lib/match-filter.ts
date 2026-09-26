@@ -22,7 +22,12 @@ export interface MatchFilter {
   submode: SubmodeFilter;
 }
 
-const ALL_MATCH_FILTER: MatchFilter = { mode: 'all', submode: 'all' };
+/**
+ * The unfiltered filter — every mode, every sub-mode. Exported so callers
+ * that need a cache key or a fallback lookup can name it without rebuilding
+ * the literal (see `listPlayerStats` in lib/store.ts).
+ */
+export const ALL_MATCH_FILTER: MatchFilter = { mode: 'all', submode: 'all' };
 
 /** Sub-mode options offered for a mode filter (empty while mode is 'all'). */
 export function submodeOptions(mode: ModeFilter): string[] {

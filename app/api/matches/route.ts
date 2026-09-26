@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createMatch, listMatches } from '@/lib/store';
+import { createMatch, listMatchSummaries } from '@/lib/store';
 import { isValidDate } from '@/lib/match-title';
 import { isValidTeamCount } from '@/lib/schedule';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
 import type { MatchInput } from '@/lib/types';
 
 export async function GET() {
-  const matches = await listMatches();
-  // Viewer list doesn't need the (potentially large) raw file payloads.
-  const summaries = matches.map(({ files, ...rest }) => ({
-    ...rest,
-    fileCount: files.length,
-  }));
-  return NextResponse.json(summaries);
+  // Viewer list doesn't need the (potentially large) raw file payloads, so
+  // this reads the summary columns rather than fetching megabytes per row
+  // only to strip them off again.
+  return NextResponse.json(await listMatchSummaries());
 }
 
 export async function POST(req: NextRequest) {

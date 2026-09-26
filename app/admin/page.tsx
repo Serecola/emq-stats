@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listMatches } from '@/lib/store';
+import { listMatchSummaries } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
 import DeleteMatchButton from '@/components/DeleteMatchButton';
 import LogoutButton from '@/components/LogoutButton';
@@ -14,7 +14,7 @@ export default async function AdminPage({
 }) {
   const filter = parseMatchFilter(searchParams);
 
-  const allMatches = await listMatches();
+  const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
   const filterLabel = matchFilterLabel(filter);
 
@@ -53,8 +53,8 @@ export default async function AdminPage({
                   {m.title}
                 </Link>
                 <div className="mt-0.5 text-xs text-textMuted">
-                  {m.teams.map((t) => t[0]).join(' vs ')} · {m.files.length} file
-                  {m.files.length !== 1 ? 's' : ''} ·{' '}
+                  {m.teams.map((t) => t[0]).join(' vs ')} · {m.fileCount} file
+                  {m.fileCount !== 1 ? 's' : ''} ·{' '}
                   {new Date(m.createdAt).toLocaleDateString()}
                 </div>
               </div>

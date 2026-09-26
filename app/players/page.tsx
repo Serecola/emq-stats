@@ -1,6 +1,5 @@
 import Link from 'next/link';
-import { listMatches } from '@/lib/store';
-import { computeAllPlayerStats } from '@/lib/player-stats';
+import { listMatchSummaries, listPlayerStats } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
 import {
   applyMatchFilter,
@@ -21,9 +20,9 @@ export default async function PlayersPage({
   searchParams: { mode?: string; submode?: string };
 }) {
   const filter = parseMatchFilter(searchParams);
-  const allMatches = await listMatches();
+  const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
-  const players = computeAllPlayerStats(matches);
+  const players = await listPlayerStats(filter);
   const filterLabel = matchFilterLabel(filter);
   // Which columns make sense depends on the mode filter: guess rate and
   // attacks/blocks are NGMC concepts, while Erumode's guess rate is averaged

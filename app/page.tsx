@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listMatches } from '@/lib/store';
+import { listMatchSummaries } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
 import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
 
@@ -12,8 +12,7 @@ export default async function HomePage({
 }) {
   const filter = parseMatchFilter(searchParams);
 
-  const raw = await listMatches();
-  const allMatches = raw.map(({ files, ...rest }) => ({ ...rest, fileCount: files.length }));
+  const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
   const [current, ...past] = matches;
   const filterLabel = matchFilterLabel(filter);

@@ -4,6 +4,7 @@ import { getMatch } from '@/lib/store';
 import { computeMatchStats } from '@/lib/stats';
 import type { MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
+import { matchFilesToBracket, summarizeBracketFiles } from '@/lib/schedule';
 import { computeMatchResults } from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
 import StatsTable from '@/components/StatsTable';
@@ -44,6 +45,15 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
   // than silently hiding NGMC-only sections — only an explicit "Erumode"
   // opts out.
   const isNgmc = match.mode !== 'Erumode';
+
+  // Which uploaded file belongs to which bracket fixture — resolved here
+  // because it needs each file's raw JSON (to detect the two teams playing),
+  // and RoundRobinGrid is a client component: whatever it receives is
+  // serialized into the page. It only renders scores, so only scores (and
+  // labels) are handed over, keeping ~2 MB of raw exports out of the payload.
+  const bracketFiles = summarizeBracketFiles(
+    matchFilesToBracket(match.teams, match.files, match.renames)
+  );
 
   // Computed synchronously (not inside a nested async component) so a
   // thrown error is actually catchable here — Server Component children
@@ -99,7 +109,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">Bracket</h2>
-        <RoundRobinGrid match={match} />
+        <RoundRobinGrid teams={match.teams} files={bracketFiles} />
       </section>
 
       <section className="space-y-3">

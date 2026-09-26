@@ -264,3 +264,29 @@ export function matchFilesToBracket(
 
   return { bySlot, unmatched: files.filter((f) => !used.has(f.id)) };
 }
+
+/**
+ * What a bracket card actually renders out of an attached file: which two
+ * teams scored what. `data` (the raw EMQ export, ~100 kB each) is
+ * deliberately left behind.
+ *
+ * RoundRobinGrid is a client component, so anything handed to it is
+ * serialized into the page response as well as the props — passing whole
+ * files would ship every tournament's raw JSON to the browser, which is
+ * what this shape exists to avoid. Slots with no attached file are simply
+ * absent, and cards for them render as unplayed.
+ */
+export interface BracketFileSummary {
+  label: string;
+  scores?: Record<string, number>;
+}
+
+export function summarizeBracketFiles(
+  assignment: BracketAssignment
+): Record<string, BracketFileSummary> {
+  const summarized: Record<string, BracketFileSummary> = {};
+  for (const [slot, file] of Object.entries(assignment.bySlot)) {
+    summarized[slot] = { label: file.label, scores: file.scores };
+  }
+  return summarized;
+}

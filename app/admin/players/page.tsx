@@ -1,8 +1,7 @@
 import AdminNav from '@/components/AdminNav';
 import ModeToggle from '@/components/ModeToggle';
 import PlayerRankTable from '@/components/PlayerRankTable';
-import { listMatches, listSetRanks } from '@/lib/store';
-import { computePlayerRankRows } from '@/lib/player-ranks';
+import { listMatchSummaries, listPlayerRankRows } from '@/lib/store';
 import {
   applyMatchFilter,
   matchFilterQuery,
@@ -23,15 +22,13 @@ export default async function AdminPlayersPage({
   // first sub-mode of the first gamemode.
   const { mode, submode } = parseSubmodeFilter(searchParams);
   const filter: MatchFilter = { mode, submode };
-  const gamemodeFilter: MatchFilter = { mode, submode: 'all' };
 
-  const allMatches = await listMatches();
+  const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
   // Everyone in this gamemode gets a row, so a sub-mode that has never been
-  // played can still be ranked ahead of its first tournament.
-  const gamemodeMatches = applyMatchFilter(allMatches, gamemodeFilter);
-  const setRanks = await listSetRanks();
-  const rows = computePlayerRankRows(matches, gamemodeMatches, setRanks, mode, submode);
+  // played can still be ranked ahead of its first tournament (see
+  // listPlayerRankRows, which also handles the gamemode-wide fallback).
+  const rows = await listPlayerRankRows(mode, submode);
 
   const selection = `${mode} ${submode}`;
   const rankedCount = rows.filter((r) => r.setRank !== null).length;

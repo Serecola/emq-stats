@@ -61,6 +61,16 @@ export interface Match {
 }
 
 /**
+ * A match without its raw file payloads, for the list views that only need
+ * the roster and a file *count*. `files` is by far the heaviest column (one
+ * raw EMQ export is ~100 kB, a tournament ~2 MB), so every list view reads
+ * this shape instead — see `listMatchSummaries` in lib/store.ts.
+ */
+export interface MatchSummary extends Omit<Match, 'files'> {
+  fileCount: number;
+}
+
+/**
  * Admin-assigned ladder ranks for the Player Manager, keyed
  * `mode -> sub-mode -> normalized username -> rank`. Ranks are per
  * gamemode *and* sub-mode (NGMC Normal, NGMC Random, Erumode Balanced, ...)

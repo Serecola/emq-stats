@@ -21,6 +21,26 @@ Matches are stored in a `matches` table via [libSQL](https://turso.tech)
 if `TURSO_DATABASE_URL` isn't set, it falls back to a local SQLite file
 (`./local.db`) automatically. The schema is created on first use.
 
+Reads are shaped around the fact that one tournament's raw JSON is ~2 MB:
+
+- List views (`/`, `/admin`, `GET /api/matches`) read a **summary** row —
+  every column except `files`, with the file count coming from the
+  `file_count` column written alongside it at save time — so they never
+  fetch the payload at all.
+- `/matches/[id]` resolves the bracket's file-to-fixture assignment on the
+  server and hands its client components only labels and scores, so the raw
+  exports aren't serialized into the page response.
+- `lib/cache.ts` memoizes the expensive derived reads in `lib/store.ts`
+  (`listMatches`, `listPlayerStats`, `listPlayerRankRows`, `listSetRanks`,
+  `listExpectedRanks`) per process, since deriving them means walking every
+  matching match's JSON. Every write bumps a `data_version` row, so a save is
+  visible immediately in the process that made it and within a second to any
+  other (the stamp is polled at most once per second).
+
+The `file_count` column and the `data_version` table are added by
+`ensureSchema()` on first use, and existing rows get their `file_count`
+backfilled from the JSON at that point — no manual migration step.
+
 To deploy against a real Turso database:
 
 ```bash

@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { listMatches } from '@/lib/store';
-import { findPlayerSummary, type PlayerMatchEntry } from '@/lib/player-stats';
+import { findPlayerStats } from '@/lib/store';
+import type { PlayerMatchEntry } from '@/lib/player-stats';
 import {
-  applyMatchFilter,
   matchFilterLabel,
   matchFilterQuery,
   parseMatchFilter,
@@ -24,15 +23,14 @@ export default async function PlayerPage({
 }) {
   const uname = decodeURIComponent(params.uname);
   const filter = parseMatchFilter(searchParams);
-  const allMatches = await listMatches();
-  const player = findPlayerSummary(applyMatchFilter(allMatches, filter), uname);
+  const player = await findPlayerStats(uname, filter);
   const filterLabel = matchFilterLabel(filter);
 
   // A valid player can be missing from a filtered view simply because they
   // never played that mode/sub-mode — offer their unfiltered page instead of
   // 404ing, and only 404 when the name matches nobody at all.
   if (!player) {
-    const overall = findPlayerSummary(allMatches, uname);
+    const overall = await findPlayerStats(uname);
     if (!overall) notFound();
     return (
       <div className="space-y-4">
