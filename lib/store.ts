@@ -7,13 +7,14 @@ import { extractCatalogFromFiles } from './catalog';
 import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
-import { computePlayerRankRows, expectedRanksFor, type PlayerRankRow } from './player-ranks';
+import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, type PlayerRankRow } from './player-ranks';
 import { norm } from './stats';
 import type {
   Match,
   MatchInput,
   MatchSummary,
   Mode,
+  PlayerTag,
   Region,
   SetRanks,
   Submode,
@@ -365,6 +366,37 @@ export async function listExpectedRanks(): Promise<SetRanks> {
 }
 
 /**
+ * Expected Ranks from each player's 5 most recent tournaments (rather than
+ * their full history) — the autodrafter's "Expected (last 5)" rank source.
+ * Same shape and caching as listSetRanks/listExpectedRanks; any mode or
+ * sub-mode without performance data is simply left out, so the caller falls
+ * back to Set Ranks there.
+ */
+export async function listRecentExpectedRanks(): Promise<SetRanks> {
+  await ensureSchema();
+  return cached('recent-expected-ranks', async () => {
+    const allMatches = await listMatches();
+    const ranks: SetRanks = {};
+
+    for (const mode of MODES) {
+      if (!ranks[mode]) ranks[mode] = {};
+      for (const submode of SUBMODES_BY_MODE[mode]) {
+        const submodeMatches = allMatches.filter(
+          (m) => m.mode === mode && m.submode === submode
+        );
+        const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
+        const expected = recentExpectedRanksFor(submodeMatches, gamemodeMatches, mode);
+        if (expected) {
+          ranks[mode][submode] = expected;
+        }
+      }
+    }
+
+    return ranks;
+  });
+}
+
+/**
  * Every player's aggregated stats across the tournaments matching `filter`
  * — the input to /players, /players/[uname] and the Player Manager. This is
  * the expensive read (it derives guess rates, attacks and blocks from every
@@ -442,5 +474,59 @@ export async function setPlayerSetRank(
             updated_at = excluded.updated_at`,
     args: [playerKey, mode, submode, rank, new Date().toISOString()],
   });
+  await markDataChanged();
+}
+
+/**
+ * Every admin-assigned Player/Bot tag, keyed by normalized username — the
+ * same identity stats and Set Ranks use. Usernames without a row are simply
+ * absent (untagged); callers treat a missing key as "no tag".
+ *
+ * Cached for the life of the data version like the other derived reads: the
+ * table is tiny, but the Player Manager and the public badge lookups hit it
+ * on every render.
+ */
+export async function listPlayerTags(): Promise<Record<string, PlayerTag>> {
+  await ensureSchema();
+  return cached('player-tags', async () => {
+    const res = await getDb().execute('SELECT player_key, tag FROM player_tags');
+    const tags: Record<string, PlayerTag> = {};
+    for (const row of res.rows as any[]) {
+      const tag = String(row.tag);
+      // Only the two known values are ever written (the API validates), but
+      // a hand-edited row shouldn't surface as a badge with garbage text.
+      if (tag !== 'Player' && tag !== 'Bot') continue;
+      tags[String(row.player_key)] = tag;
+    }
+    return tags;
+  });
+}
+
+/**
+ * Sets (or, with `tag === null`, clears) one username's global Player/Bot
+ * tag. One row per username — no mode/sub-mode dimension — so tagging a
+ * name anywhere tags it everywhere.
+ */
+export async function setPlayerTag(
+  playerKey: string,
+  tag: PlayerTag | null
+): Promise<void> {
+  await ensureSchema();
+  const db = getDb();
+  if (tag === null) {
+    await db.execute({
+      sql: 'DELETE FROM player_tags WHERE player_key = ?',
+      args: [playerKey],
+    });
+  } else {
+    await db.execute({
+      sql: `INSERT INTO player_tags (player_key, tag, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(player_key) DO UPDATE SET
+              tag = excluded.tag,
+              updated_at = excluded.updated_at`,
+      args: [playerKey, tag, new Date().toISOString()],
+    });
+  }
   await markDataChanged();
 }

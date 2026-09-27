@@ -215,6 +215,34 @@ export function fileParticipantIndices(
   return idx;
 }
 
+/**
+ * The play timestamp the game writes into its own export name —
+ * `EMQ_SongHistory_2026-09-27T01_52_55` → `2026-09-27T01_52_55`. Every
+ * component is fixed width, so comparing the strings is already a
+ * chronological comparison. Files renamed to something without one
+ * (or hand-labelled at save time) get null.
+ */
+export function exportTimestamp(label: string): string | null {
+  const m = label.match(/\d{4}-\d{2}-\d{2}T\d{2}[_:]\d{2}[_:]\d{2}/);
+  return m ? m[0] : null;
+}
+
+/**
+ * Orders two exports by the time in their names, earliest first. This is the
+ * order pass 2 of matchFilesToBracket tries them in, so when a pair has two
+ * recorded games the earlier one lands on the pair's first fixture and the
+ * later one on its rematch. Files with no parseable timestamp sort after the
+ * timed ones and keep their relative order (sort is stable).
+ */
+function compareByExportTime(a: string, b: string): number {
+  const ta = exportTimestamp(a);
+  const tb = exportTimestamp(b);
+  if (ta === null && tb === null) return 0;
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  return ta < tb ? -1 : ta > tb ? 1 : 0;
+}
+
 export interface BracketAssignment {
   bySlot: Record<string, MatchFile>; // matchup slot -> attached file
   unmatched: MatchFile[]; // files that couldn't be tied to a fixture
@@ -223,8 +251,9 @@ export interface BracketAssignment {
 /**
  * Binds uploaded files to bracket matchups. Files carrying an explicit
  * `slot` win outright; the rest are matched by the two teams detected in
- * them (first empty slot for that pair). Anything left over is returned
- * as `unmatched` so it isn't silently dropped.
+ * them (first empty slot for that pair, tried in export-time order so a
+ * pair's earlier game lands on its first fixture — see compareByExportTime).
+ * Anything left over is returned as `unmatched` so it isn't silently dropped.
  */
 export function matchFilesToBracket(
   teams: Team[],
@@ -257,8 +286,13 @@ export function matchFilesToBracket(
     }
   }
 
-  // Pass 2: infer by the two teams present in each file.
-  for (const file of remaining) {
+  // Pass 2: infer by the two teams present in each file. A pair that played
+  // twice (double round robin) yields the same two teams in both files, so
+  // the try order decides which leg each lands on: sort by the play time the
+  // game writes into the export's own name (EMQ_SongHistory_2026-09-27T01_52_55)
+  // — the earlier game first, so it fills the pair's first fixture and the
+  // later one its rematch.
+  for (const file of [...remaining].sort((a, b) => compareByExportTime(a.label, b.label))) {
     const idx = fileParticipantIndices(file, teams, renames);
     if (idx.length !== 2) continue;
     const key = `${Math.min(idx[0], idx[1])},${Math.max(idx[0], idx[1])}`;

@@ -62,45 +62,41 @@ export interface BalanceOptions {
 }
 
 /**
- * Fills in a player's rank from the admin's saved Player Manager ranks when
- * the pasted ranks table doesn't have one for them, and returns the merged
- * lookup keyed by normalized name.
+ * Fills in ranks for the players in `listed` and returns the merged lookup
+ * keyed by normalized name. Three layers, highest priority first:
  *
- * This is what makes the saved Set Ranks the source of truth for autodraft:
- * ranks for the tournament's gamemode + sub-mode (see listSetRanks) are laid
- * underneath any text pasted into the draft's ranks box, so a one-off
- * override still wins while an unknown player falls back to their saved rank
- * instead of being dropped from the draft. Set Ranks not attached to a player
- * in `listed` are ignored, so a stale entry can never invent a player.
+ *   1. `pasted`  — ranks pasted into the draft's Ranks box, the per-tournament
+ *                  one-off overrides. Kept verbatim (extra keys never enter a
+ *                  draft, since callers only ever walk `listed`).
+ *   2. `primary` — the drafter's chosen source: the admin's saved Set Ranks
+ *                  for the tournament's gamemode + sub-mode (see listSetRanks),
+ *                  or the Expected Ranks when that source is selected.
+ *   3. `fallback` — what to try when `primary` has no entry for a player: Set
+ *                  Ranks under an Expected-Ranks draft, so a player without
+ *                  recent games still drafts at their assigned rank.
  *
- * When `expectedRanks` is provided, players without a Set Rank fall back to
- * their Expected Rank (computed from their performance) so they can still
- * participate in the draft rather than being excluded. The priority order is:
- *   1. Pasted ranks (one-off overrides)
- *   2. Set Ranks (admin-assigned, per gamemode + sub-mode)
- *   3. Expected Ranks (computed from player performance, when available)
+ * Only names actually in `listed` can gain a `primary`/`fallback` rank, so a
+ * stale saved entry can never invent a player, while an unknown player falls
+ * back through the layers instead of being dropped from the draft. When a
+ * player exists in neither layer they stay unranked and the drafter asks the
+ * admin for a rank.
  */
 export function mergeHiddenRanks(
   listed: ListedPlayer[],
   pasted: Record<string, number>,
-  saved: Record<string, number> | null | undefined,
-  expectedRanks?: Record<string, number> | null
+  primary: Record<string, number> | null | undefined,
+  fallback?: Record<string, number> | null
 ): Record<string, number> {
   const merged: Record<string, number> = { ...pasted };
-  if (!saved) return merged;
-  for (const player of listed) {
-    const key = norm(player.name);
-    if (merged[key] === undefined && saved[key] !== undefined) merged[key] = saved[key];
-  }
-  // Fall back to Expected Ranks for players still missing a rank.
-  if (expectedRanks) {
+  const fill = (table: Record<string, number> | null | undefined): void => {
+    if (!table) return;
     for (const player of listed) {
       const key = norm(player.name);
-      if (merged[key] === undefined && expectedRanks[key] !== undefined) {
-        merged[key] = expectedRanks[key];
-      }
+      if (merged[key] === undefined && table[key] !== undefined) merged[key] = table[key];
     }
-  }
+  };
+  fill(primary);
+  fill(fallback);
   return merged;
 }
 

@@ -27,6 +27,7 @@ type FileDraft = {
 export default function MatchForm({
   existing,
   savedRanks,
+  expectedRanks,
 }: {
   existing?: Match;
   // The admin's Set Ranks from the Player Manager, keyed mode -> sub-mode ->
@@ -34,6 +35,10 @@ export default function MatchForm({
   // tournament's mode + sub-mode, so a draft is balanced with the ranks that
   // were assigned for the exact gamemode it's for.
   savedRanks?: SetRanks;
+  // Expected Ranks from each player's last 5 tournaments (same keying) — the
+  // autodrafter's "Expected (last 5)" source, with Set Ranks as the fallback
+  // for players who have no recent games.
+  expectedRanks?: SetRanks;
 }) {
   const router = useRouter();
   const [name, setName] = useState(existing?.name ?? '');
@@ -83,6 +88,9 @@ export default function MatchForm({
   // pointer is off it — same behaviour as the read-only bracket on the match
   // page, so one squad's whole set of games can be read off either view.
   const [hoveredTeam, setHoveredTeam] = useState<number | null>(null);
+  // Match box the pointer is currently dragging a file over — its card
+  // highlights so it's obvious where the drop will land (null = nowhere).
+  const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
 
   const parsedTeams = useMemo(() => parseTeamsBlob(teamsText), [teamsText]);
   // Merge over any existing ranks so re-saving without re-annotating the
@@ -164,32 +172,62 @@ export default function MatchForm({
     });
   }
 
-  // Attach a JSON export to a specific matchup, replacing (and carrying
-  // over any already-entered scores from) whatever was there before.
-  function attachFile(slot: string, fileList: FileList | null) {
+  // Single intake for every upload path — a match box's file picker, a drop
+  // on a match box, the batch picker, a drop on the bracket. `slot` pins the
+  // first file to that fixture; everything else is added slot-less so the
+  // participant matcher can place it (see matchFilesToBracket).
+  async function intake(fileList: FileList | null, slot?: string) {
     if (!fileList || fileList.length === 0) return;
-    const picked = fileList[0];
-    const existingFile = assignment.bySlot[slot];
-    picked.text().then((text) => {
-      const newId = nanoid(6);
-      setFiles((prev) => {
-        const filtered = existingFile ? prev.filter((f) => f.id !== existingFile.id) : prev;
-        return [
-          ...filtered,
-          { id: newId, label: picked.name.replace(/\.json$/i, ''), text, error: null, slot },
-        ];
-      });
-      if (existingFile) {
-        setScores((prev) => {
-          const next = { ...prev };
-          if (next[existingFile.id]) {
-            next[newId] = next[existingFile.id];
-            delete next[existingFile.id];
-          }
-          return next;
-        });
-      }
+    // The pickers' accept attribute guards them; drops need it right here.
+    const jsons = Array.from(fileList).filter((f) => /\.json$/i.test(f.name));
+    if (jsons.length === 0) {
+      setFormError('Only .json song-history exports can be attached.');
+      return;
+    }
+    setFormError(null);
+    const entries = await Promise.all(
+      jsons.map(async (f) => ({
+        name: f.name.replace(/\.json$/i, ''),
+        text: await f.text(),
+      }))
+    );
+    addUploads(entries, slot);
+  }
+
+  // Adds already-read exports. With a slot, the first entry pins to that
+  // fixture — replacing whatever was there and carrying over any entered
+  // scores (same as the card's own picker did); the rest, or all entries
+  // when no slot was given, land slot-less for the matcher to place.
+  function addUploads(entries: { name: string; text: string }[], slot?: string) {
+    if (entries.length === 0) return;
+    const pinned = slot ? entries[0] : undefined;
+    const loose = slot ? entries.slice(1) : entries;
+    const replaced = slot ? assignment.bySlot[slot] : undefined;
+    // Ids are generated up here, not inside the setFiles updater, so a
+    // re-run of the updater (StrictMode) can't hand out a different one.
+    const drafts: FileDraft[] = [];
+    if (slot && pinned) {
+      drafts.push({ id: nanoid(6), label: pinned.name, text: pinned.text, error: null, slot });
+    }
+    for (const e of loose) {
+      drafts.push({ id: nanoid(6), label: e.name, text: e.text, error: null });
+    }
+    const pinnedId = slot && pinned ? drafts[0].id : undefined;
+
+    setFiles((prev) => {
+      const filtered = replaced ? prev.filter((f) => f.id !== replaced.id) : prev;
+      return [...filtered, ...drafts];
     });
+    if (replaced && pinnedId) {
+      setScores((prev) => {
+        const next = { ...prev };
+        if (next[replaced.id]) {
+          next[pinnedId] = next[replaced.id];
+          delete next[replaced.id];
+        }
+        return next;
+      });
+    }
   }
 
   function removeFile(id: string) {
@@ -199,6 +237,14 @@ export default function MatchForm({
       delete next[id];
       return next;
     });
+  }
+
+  // A miss while dragging — a drop anywhere on the form that isn't a match
+  // box or the bracket — must not hand the file to the browser, which would
+  // navigate to the JSON and lose everything typed. Cancel the default
+  // instead; the zones that accept files prevent it themselves and upload.
+  function blockFileDrop(e: React.DragEvent) {
+    if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault();
   }
 
   // Entering a score for a matchup that has no file yet creates a
@@ -340,7 +386,12 @@ export default function MatchForm({
   const unmatchedFiles = unmatchedDrafts.filter((f) => f.text.trim());
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form
+      onSubmit={onSubmit}
+      className="space-y-6"
+      onDragOver={blockFileDrop}
+      onDrop={blockFileDrop}
+    >
       <div>
         <label className="mb-1 block text-xs font-medium text-textMuted">
           Tournament <span className="text-textDim">(date, region, mode, and sub-mode are mandatory)</span>
@@ -454,13 +505,13 @@ export default function MatchForm({
             {teamSource === 'paste' && (
             <div>
               <label className="mb-1 block text-xs font-medium text-textMuted">
-                Teams <span className="text-textDim">(paste the whole roster — score numbers are ignored)</span>
+                Teams
               </label>
               <textarea
               value={teamsText}
               onChange={(e) => setTeamsText(e.target.value)}
               placeholder={
-                'Tommy (11) JerryTheRisu (6) hopefortomorrow (5) = 22 ivesoundfan (9) wailing (6) KappuChinooo (6) = 21 patt (11) Memories (9) carmanhan (1) = 21 Serecola (10) AJ1703 (6) Kirivert (5) = 21'
+                'Player1 (Rank) Player2 (Rank) Player3 (Rank) = RankTotal\nPlayer1 (Rank) Player2 (Rank) Player3 (Rank) = RankTotal\n'
               }
               rows={4}
               className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-3 py-2 font-mono text-xs outline-none focus:border-textSub"
@@ -496,6 +547,7 @@ export default function MatchForm({
             {teamSource === 'draft' && (
               <TeamDrafter
                 savedRanks={savedRanksFor(savedRanks ?? {}, mode, submode)}
+                expectedRanks={savedRanksFor(expectedRanks ?? {}, mode, submode)}
                 savedRanksLabel={`${mode} ${submode}`}
                 onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))}
               />
@@ -509,16 +561,57 @@ export default function MatchForm({
             <label className="block text-xs font-medium text-textMuted">
               Bracket{' '}
               <span className="text-textDim">
-                (attach a JSON export and enter scores for each matchup)
+                (drag a JSON export onto a match — or batch upload several — then
+                enter scores for each matchup)
               </span>
             </label>
-            {/* One click for every export attached to this tournament, matched
-                to a fixture or not — the uploads are otherwise only editable
-                here, so this is the way to get them back out, zipped up under
-                the tournament's own name. */}
-            <DownloadFilesButton files={files} archiveName={previewTitle || name} />
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Batch upload: several exports in one go, each matched to a
+                  fixture by the players detected in its JSON. Two games that
+                  share a pair (double round robin) are split across that
+                  pair's two fixtures in play-time order — see
+                  matchFilesToBracket. */}
+              <label
+                title="Pick several .json exports; each one is matched to a fixture by the players in it"
+                className="cursor-pointer rounded-md border border-border px-2 py-1 text-[0.65rem] text-textSub transition-colors hover:border-textSub hover:text-text"
+              >
+                Batch upload JSONs
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    intake(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {/* One click for every export attached to this tournament, matched
+                  to a fixture or not — the uploads are otherwise only editable
+                  here, so this is the way to get them back out, zipped up under
+                  the tournament's own name. */}
+              <DownloadFilesButton files={files} archiveName={previewTitle || name} />
+            </div>
           </div>
-          <div className="space-y-3" onMouseLeave={() => setHoveredTeam(null)}>
+          {/* The bracket outside the cards doubles as the batch drop zone:
+              several exports at once, each bound to a fixture by the players
+              in its JSON. A card stops the drop before it reaches here when
+              the file is meant for one specific match. */}
+          <div
+            className="space-y-3"
+            onMouseLeave={() => setHoveredTeam(null)}
+            onDragOver={(e) => {
+              if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOverSlot(null);
+              intake(e.dataTransfer.files);
+            }}
+          >
             {rounds.map((round) => (
               <div key={round.displayRound}>
                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-textMuted">
@@ -541,10 +634,31 @@ export default function MatchForm({
                     return (
                       <div
                         key={m.slot}
+                        // A match box is also a drop target: a JSON dropped
+                        // here is attached to this fixture specifically.
+                        onDragOver={(e) => {
+                          if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'copy';
+                          setDragOverSlot(m.slot);
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                            setDragOverSlot(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation(); // not the bracket-level batch upload
+                          setDragOverSlot(null);
+                          intake(e.dataTransfer.files, m.slot);
+                        }}
                         className={`rounded-md border px-2 py-1 ${
-                          bothScored
-                            ? 'border-border bg-surface'
-                            : 'border-dashed border-border bg-surface/40'
+                          dragOverSlot === m.slot
+                            ? 'border-accent bg-accent/10'
+                            : bothScored
+                              ? 'border-border bg-surface'
+                              : 'border-dashed border-border bg-surface/40'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -572,14 +686,17 @@ export default function MatchForm({
                               </button>
                             </div>
                           ) : (
-                            <label className="cursor-pointer text-[0.65rem] text-accent hover:underline">
+                            <label
+                              title="Click to pick a file, or drop a .json export right onto this match"
+                              className="cursor-pointer text-[0.65rem] text-accent hover:underline"
+                            >
                               Attach JSON
                               <input
                                 type="file"
                                 accept=".json,application/json"
                                 className="hidden"
                                 onChange={(e) => {
-                                  attachFile(m.slot, e.target.files);
+                                  intake(e.target.files, m.slot);
                                   e.target.value = '';
                                 }}
                               />

@@ -1,6 +1,8 @@
 import Link from 'next/link';
-import { listMatchSummaries, listPlayerStats } from '@/lib/store';
+import { listMatchSummaries, listPlayerStats, listPlayerTags } from '@/lib/store';
+import { norm } from '@/lib/stats';
 import ModeToggle from '@/components/ModeToggle';
+import PlayerTagBadge from '@/components/PlayerTagBadge';
 import {
   applyMatchFilter,
   matchFilterLabel,
@@ -29,6 +31,9 @@ export default async function PlayersPage({
   const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
   const players = await listPlayerStats(filter);
+  // Global Player/Bot tags — usernames tagged Bot get a pill next to their
+  // name below (see PlayerTagBadge).
+  const tags = await listPlayerTags();
   const filterLabel = matchFilterLabel(filter);
   // Attacks and blocks only exist in NGMC exports, so those columns only make
   // sense inside an NGMC sub-mode — an Erumode selection gets none.
@@ -88,6 +93,7 @@ export default async function PlayersPage({
                     >
                       {p.uname}
                     </Link>
+                    <PlayerTagBadge tag={tags[norm(p.uname)]} className="ml-1.5" />
                   </td>
                   <td className="px-3 py-2 text-right text-textMuted">{p.matchesPlayed}</td>
                   <td className="px-3 py-2 text-right text-accent">

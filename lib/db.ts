@@ -134,6 +134,19 @@ export function ensureSchema(): Promise<void> {
       )`;
       await db.execute(createPlayerSetRanks);
 
+      // Admin-assigned Player/Bot identity tag — one row per *global*
+      // username (normalized, like player_set_ranks' player_key), because a
+      // bot is a bot in every gamemode. Absent row = untagged. The tag only
+      // labels; nothing filters on it yet, so no migration ever needs to
+      // backfill this table.
+      await db.execute(
+        `CREATE TABLE IF NOT EXISTS player_tags (
+          player_key TEXT PRIMARY KEY,
+          tag TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`
+      );
+
       // Migrate a table created by an earlier build where ranks were stored
       // per gamemode only. Those rows have no sub-mode to map to, so they're
       // dropped (the admin re-assigns per sub-mode) and the table is rebuilt

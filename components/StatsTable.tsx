@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { MatchStats, PlayerStats, TeamStats } from '@/lib/types';
+import type { MatchStats, PlayerStats, PlayerTag, TeamStats } from '@/lib/types';
+import { norm } from '@/lib/stats';
 import { teamColor } from '@/lib/team-colors';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
+import PlayerTagBadge from './PlayerTagBadge';
 
 type SortKey = 'uname' | 'correct' | 'taken' | 'blocked';
 
@@ -20,7 +22,14 @@ function accessor(m: PlayerStats, key: SortKey): number | string {
   }
 }
 
-export default function StatsTable({ stats }: { stats: MatchStats }) {
+export default function StatsTable({
+  stats,
+  playerTags,
+}: {
+  stats: MatchStats;
+  /** Global Player/Bot tags — usernames tagged Bot get a pill by their name. */
+  playerTags?: Record<string, PlayerTag>;
+}) {
   const [activePlayer, setActivePlayer] = useState<PlayerStats | null>(null);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -66,6 +75,7 @@ export default function StatsTable({ stats }: { stats: MatchStats }) {
               onSelectPlayer={setActivePlayer}
               sortKey={sortKey}
               sortDir={sortDir}
+              playerTags={playerTags}
             />
           ))}
           {stats.teams.every((t) => t.members.length === 0) && (
@@ -91,12 +101,14 @@ function TeamRows({
   onSelectPlayer,
   sortKey,
   sortDir,
+  playerTags,
 }: {
   team: TeamStats;
   color: string;
   onSelectPlayer: (p: PlayerStats) => void;
   sortKey: SortKey | null;
   sortDir: SortDir;
+  playerTags?: Record<string, PlayerTag>;
 }) {
   const members = sortKey
     ? [...team.members].sort((a, b) => compareValues(accessor(a, sortKey), accessor(b, sortKey), sortDir))
@@ -137,6 +149,7 @@ function TeamRows({
             >
               {m.uname}
             </button>
+            <PlayerTagBadge tag={playerTags?.[norm(m.uname)]} className="ml-1.5" />
           </td>
           <td className="px-3 py-2 text-right text-textMuted">{m.correct}</td>
           <td className="px-3 py-2 text-right font-medium text-taken">

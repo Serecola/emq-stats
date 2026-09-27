@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
-import type { Team } from '@/lib/types';
+import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
 import { teamColor } from '@/lib/team-colors';
 import ExpectationBadge from './ExpectationBadge';
+import PlayerTagBadge from './PlayerTagBadge';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
 
 const norm = (s: string) => s.toLowerCase().trim();
@@ -141,10 +142,13 @@ export default function GuessRateTable({
   stats,
   teams,
   playerRanks,
+  playerTags,
 }: {
   stats: GuessRateStats;
   teams: Team[];
   playerRanks: Record<string, number>;
+  /** Global Player/Bot tags — usernames tagged Bot get a pill by their name. */
+  playerTags?: Record<string, PlayerTag>;
 }) {
   // Tier = ordinal position within the player's team (1st listed = T1, 2nd
   // = T2, ...), derived purely from roster order — never stored. Rank =
@@ -172,6 +176,15 @@ export default function GuessRateTable({
     const ti = teamIndexOf(uname);
     return ti === -1 ? undefined : teamColor(ti);
   };
+
+  // Shared name cell for both mode tables: team tint plus the bot pill when
+  // the username is tagged (see PlayerTagBadge).
+  const nameRender = (r: { uname: string }): React.ReactNode => (
+    <span style={{ color: colorOf(r.uname) }}>
+      {r.uname}
+      <PlayerTagBadge tag={playerTags?.[norm(r.uname)]} className="ml-1.5" />
+    </span>
+  );
 
   const tierColumn = <T extends { uname: string }>(): Column<T> => ({
     key: 'tier',
@@ -224,7 +237,7 @@ export default function GuessRateTable({
         key: 'uname',
         label: 'Player',
         accessor: (r) => r.uname.toLowerCase(),
-        render: (r) => <span style={{ color: colorOf(r.uname) }}>{r.uname}</span>,
+        render: nameRender,
       },
       rankColumn<ErumodeGuessRow>(),
       performanceColumn<ErumodeGuessRow>(),
@@ -263,7 +276,7 @@ export default function GuessRateTable({
       key: 'uname',
       label: 'Player',
       accessor: (r) => r.uname.toLowerCase(),
-      render: (r) => <span style={{ color: colorOf(r.uname) }}>{r.uname}</span>,
+      render: nameRender,
     },
     rankColumn<NgmcGuessRow>(),
     performanceColumn<NgmcGuessRow>(),

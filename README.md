@@ -12,7 +12,8 @@ Next.js app for tracking EMQ team-battle attack/block stats. Two sections:
     that match.
   - **Player Manager** (`/admin/players`) — per-gamemode ladder management:
     assign each player's **Set Rank** and compare it against their computed
-    **Expected Rank** and promotion **Expectation**.
+    **Expected Rank** and promotion **Expectation**; a second tab tags
+    usernames globally as **Player** or **Bot**.
 
 ## Data layer
 
@@ -32,7 +33,7 @@ Reads are shaped around the fact that one tournament's raw JSON is ~2 MB:
   exports aren't serialized into the page response.
 - `lib/cache.ts` memoizes the expensive derived reads in `lib/store.ts`
   (`listMatches`, `listPlayerStats`, `listPlayerRankRows`, `listSetRanks`,
-  `listExpectedRanks`) per process, since deriving them means walking every
+  `listExpectedRanks`, `listRecentExpectedRanks`, `listPlayerTags`) per process, since deriving them means walking every
   matching match's JSON. Every write bumps a `data_version` row, so a save is
   visible immediately in the process that made it and within a second to any
   other (the stamp is polled at most once per second).
@@ -97,15 +98,41 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
   column, so the two views can never disagree about a player. Players without a
   Set Rank show `—` rather than a verdict.
 
-### Set Ranks drive autodraft
+### Player Tags tab
 
-The match form's autodrafter (`components/TeamDrafter.tsx`) balances with the
-saved Set Ranks for the tournament's own mode + sub-mode, so a new tournament
-only needs the players list pasted in — every name with a rank is picked up
-automatically, and anyone without one is reported as unranked instead of
-silently taking part. The drafter's Ranks box still works as a per-tournament
-override: pasted ranks win over saved ones (see `mergeHiddenRanks` in
-`lib/balance.ts`), and only names actually listed can enter the draft.
+The Player Manager's second tab (`/admin/players?tab=tags`) labels usernames
+as **Player** or **Bot**. Unlike Set Ranks this is *global* — one tag per
+normalized username across every gamemode (a bot is a bot everywhere), stored
+in the `player_tags` table and saved via `PUT /api/admin/player-tags`. The
+tab lists every username from every tournament with search and
+All/Untagged/Player/Bot filters; clicking the active tag again clears it.
+
+Tags only label for now: a name tagged Bot gets a `bot` pill next to it on
+the public player pages (`/players`, `/players/[uname]`) and in the match
+stats tables (Guess Rate and Attacks & Blocks), and nothing filters stats or
+autodraft on the tag yet.
+
+### Autodraft rank sources
+
+The match form's autodrafter (`components/TeamDrafter.tsx`) balances with one
+of three rank sources, picked with the pills above the players box:
+
+1. **Set Ranks** (default) — the saved Set Ranks for the tournament's own
+   mode + sub-mode, so a new tournament only needs the players list pasted in.
+   A player without a Set Rank is shown with an inline input so the admin can
+   type a rank on the spot (draft-only — save it in the Player Manager to
+   keep it); until then they sit out the draft.
+2. **Expected (last 5)** — each player's Expected Rank computed from only
+   their 5 most recent tournaments in that mode + sub-mode (songs-weighted
+   mean of those tournaments' Performance — `recentExpectedRanksFor` in
+   `lib/player-ranks.ts`), falling back to their Set Rank when they have no
+   games to compute one from.
+3. **Pasted table** — only a `rank: name, name` table pasted into the Ranks
+   box (`11: karira, patt`), for one-off drafts outside the saved ladders.
+
+Whichever source is selected, the Ranks box still works as a per-tournament
+override on top of it, and only names actually listed can enter the draft
+(see `mergeHiddenRanks` in `lib/balance.ts`).
 
 Player identity is the normalized username (the same identity stats aggregate
 by) — there's no cross-match account linking, so a name that's spelled

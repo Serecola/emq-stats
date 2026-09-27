@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { findPlayerStats } from '@/lib/store';
+import { findPlayerStats, listPlayerTags } from '@/lib/store';
+import { norm } from '@/lib/stats';
+import PlayerTagBadge from '@/components/PlayerTagBadge';
 import type { PlayerMatchEntry } from '@/lib/player-stats';
 import {
   matchFilterLabel,
@@ -28,6 +30,8 @@ export default async function PlayerPage({
   const filter = parseSubmodeFilter(searchParams);
   const player = await findPlayerStats(uname, filter);
   const filterLabel = matchFilterLabel(filter);
+  // Global Player/Bot tag for the header pill (see PlayerTagBadge).
+  const tags = await listPlayerTags();
 
   // A valid player can be missing from a filtered view simply because they
   // never played that mode/sub-mode — offer their unfiltered page instead of
@@ -43,7 +47,10 @@ export default async function PlayerPage({
         >
           ← All players
         </Link>
-        <h1 className="text-lg font-semibold">{overall.uname}</h1>
+        <h1 className="text-lg font-semibold">
+          {overall.uname}
+          <PlayerTagBadge tag={tags[norm(overall.uname)]} className="ml-2" />
+        </h1>
         <p className="text-sm text-textMuted">
           No {filterLabel || 'matching'} tournaments played.{' '}
           <Link
@@ -73,7 +80,10 @@ export default async function PlayerPage({
         >
           ← Players
         </Link>
-        <h1 className="mt-2 text-lg font-semibold">{player.uname}</h1>
+        <h1 className="mt-2 text-lg font-semibold">
+          {player.uname}
+          <PlayerTagBadge tag={tags[norm(player.uname)]} className="ml-2" />
+        </h1>
         <p className="text-xs text-textDim">
           {filterLabel ? `${filterLabel} · ` : ''}
           {player.matchesPlayed} tournament{player.matchesPlayed !== 1 ? 's' : ''} played

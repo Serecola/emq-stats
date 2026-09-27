@@ -159,3 +159,46 @@ export function expectedRanksFor(
   }
   return Object.keys(ranks).length > 0 ? ranks : null;
 }
+
+/**
+ * Expected Ranks from recent form instead of full history: for each player,
+ * the songs-weighted mean of their Performance over their `limit` (default 5)
+ * most recent tournaments — the autodrafter's "Expected (last 5)" source, so
+ * a player's current run counts more than tournaments from a year ago.
+ *
+ * Same scale as Set Rank / roster `(N)` ranks, and same fallback shape as
+ * `expectedRanksFor`: whole-gamemode matches are used when the sub-mode has
+ * no tournaments yet, and null is returned when there's no data at all so
+ * callers can fall back to Set Ranks.
+ */
+export function recentExpectedRanksFor(
+  submodeMatches: Match[],
+  gamemodeMatches: Match[],
+  mode: string,
+  limit = 5
+): Record<string, number> | null {
+  const source = submodeMatches.length ? submodeMatches : gamemodeMatches;
+  const allStats = computeAllPlayerStats(source);
+  if (!allStats.length) return null;
+
+  const ranks: Record<string, number> = {};
+  for (const p of allStats) {
+    // `entries` is one per tournament, most recent first (sorted in
+    // computeAllPlayerStats), each carrying that tournament's Performance
+    // and song count — enough to rebuild the songs-weighted mean over just
+    // the latest few.
+    const recent = p.entries.filter((e) => e.mode === mode).slice(0, limit);
+    let weighted = 0;
+    let songs = 0;
+    for (const e of recent) {
+      weighted += e.performance * e.songs;
+      songs += e.songs;
+    }
+    if (songs === 0) continue;
+    const expectedRank = weighted / songs;
+    if (expectedRank > 0) {
+      ranks[norm(p.uname)] = expectedRank;
+    }
+  }
+  return Object.keys(ranks).length > 0 ? ranks : null;
+}

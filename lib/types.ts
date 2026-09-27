@@ -83,6 +83,14 @@ export interface MatchSummary extends Omit<Match, 'files'> {
  */
 export type SetRanks = Record<string, Record<string, Record<string, number>>>;
 
+/**
+ * Admin-assigned identity tag for a username — "Player" or "Bot". Global
+ * (one tag per username across every gamemode, unlike Set Ranks): a bot is
+ * a bot everywhere. Stored keyed by normalized username, the same identity
+ * stats and Set Ranks use, and `null`/missing means "untagged".
+ */
+export type PlayerTag = 'Player' | 'Bot';
+
 // Payload shape used when creating/updating a match from the admin panel.
 export interface MatchInput {
   name: string;

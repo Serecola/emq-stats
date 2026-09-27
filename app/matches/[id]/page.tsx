@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getMatch } from '@/lib/store';
+import { getMatch, listPlayerTags } from '@/lib/store';
 import { computeMatchStats } from '@/lib/stats';
 import type { MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
@@ -49,6 +49,9 @@ export default async function MatchPage({
 }) {
   const match = await getMatch(params.id);
   if (!match) notFound();
+
+  // Global Player/Bot tags for the bot pills in the stats tables below.
+  const playerTags = await listPlayerTags();
 
   const date = new Date(match.createdAt).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -180,7 +183,12 @@ export default async function MatchPage({
         {guessError ? (
           <ErrorBox label="Guess Rate stats" err={guessError} />
         ) : guessStats ? (
-          <GuessRateTable stats={guessStats} teams={match.teams} playerRanks={match.playerRanks} />
+          <GuessRateTable
+            stats={guessStats}
+            teams={match.teams}
+            playerRanks={match.playerRanks}
+            playerTags={playerTags}
+          />
         ) : null}
 
         {isNgmc &&
@@ -191,7 +199,7 @@ export default async function MatchPage({
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
                 Attacks &amp; Blocks
               </h3>
-              <StatsTable stats={matchStats} />
+              <StatsTable stats={matchStats} playerTags={playerTags} />
             </div>
           ) : null)}
       </section>
