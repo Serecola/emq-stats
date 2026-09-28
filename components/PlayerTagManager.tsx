@@ -218,6 +218,26 @@ export default function PlayerTagManager({
   }
 
   /**
+   * Removes an alias chip: the two names split back into separate players and
+   * their stats separate with them. Confirmed, because the button is a small ×
+   * beside a name and the consequence lands on every aggregate view at once —
+   * this is the one delete in the app whose effect isn't confined to the row
+   * it was clicked in.
+   */
+  function removeAlias(alias: string, mainName: string, rowKey: string) {
+    if (
+      !confirm(
+        `Stop treating "${alias}" as ${mainName}?\n\n` +
+          `Their tournaments split into two separate players, and the stats shown for ` +
+          `${mainName} will drop to the ones recorded under that name only.`
+      )
+    ) {
+      return;
+    }
+    saveAlias(alias, null, rowKey);
+  }
+
+  /**
    * Inverts one alias: the folded name becomes the main name, and the name it
    * was folded into becomes its alias. That is the way back from a rename that
    * went the wrong way — "I renamed Sere to Sere2, that was a typo, put Sere
@@ -232,6 +252,17 @@ export default function PlayerTagManager({
    * the state that loses nothing.
    */
   async function swapAlias(aliasName: string, mainName: string, rowKey: string) {
+    // A swap reassigns which name is canonical, carrying that name's Set Ranks
+    // and bot row across — so it's confirmed, even though it loses no data: the
+    // point is that the admin has to notice *which* two names it applies to.
+    if (
+      !confirm(
+        `Swap these two names?\n\n"${aliasName}" becomes the main name and ${mainName} becomes its ` +
+          `alias, with their Set Ranks and bot tag following.`
+      )
+    ) {
+      return;
+    }
     setStatuses((prev) => ({ ...prev, [rowKey]: 'saving' }));
     setErrors((prev) => ({ ...prev, [rowKey]: '' }));
     const put = (alias: string, target: string | null) =>
@@ -404,7 +435,7 @@ export default function PlayerTagManager({
                             type="button"
                             title={`Stop treating "${a}" as ${p.uname} — their stats split back out`}
                             aria-label={`Remove alias ${a}`}
-                            onClick={() => saveAlias(a, null, key)}
+                            onClick={() => removeAlias(a, p.uname, key)}
                             className="cursor-pointer leading-none text-textDim hover:text-taken"
                           >
                             ×
@@ -472,7 +503,15 @@ export default function PlayerTagManager({
                         <button
                           type="button"
                           title={`Forget this override and let the "Bot in the name" rule decide ${p.uname}`}
-                          onClick={() => save(p.uname, null)}
+                          onClick={() => {
+                            // Dropping the override hands the name back to the
+                            // automatic rule, so a name like "AisuBot" reverts
+                            // to being badged a bot. Cheap to redo, but the
+                            // button sits beside the Bot toggle and looks like
+                            // part of it, so it asks first.
+                            if (!confirm(`Forget the saved tag for ${p.uname}?`)) return;
+                            save(p.uname, null);
+                          }}
                           className="rounded-full border border-border px-2.5 py-0.5 text-[0.65rem] font-medium text-textDim transition-colors hover:border-textSub hover:text-text"
                         >
                           auto

@@ -260,7 +260,22 @@ export default function MatchForm({
     }
   }
 
-  function removeFile(id: string) {
+  /**
+   * Detaches one uploaded export from this tournament, along with any scores
+   * entered against it. Confirmed, because the labels are truncated in the UI
+   * and two exports of the same game are easy to confuse — and on an existing
+   * tournament saving after this drops the file (and its scores) for good.
+   */
+  function removeFile(id: string, label?: string) {
+    const name = label ? `"${label}"` : 'this file';
+    if (
+      !confirm(
+        `Remove ${name}?\n\nAny scores entered against it are dropped too. ` +
+          `Removing it from the list isn't saved until you save the tournament.`
+      )
+    ) {
+      return;
+    }
     setFiles((prev) => prev.filter((f) => f.id !== id));
     setScores((prev) => {
       const next = { ...prev };
@@ -723,7 +738,7 @@ export default function MatchForm({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => removeFile(draft.id)}
+                                onClick={() => removeFile(draft.id, exportDisplayLabel(draft.label))}
                                 className="text-[0.65rem] text-textDim hover:text-taken"
                               >
                                 Remove
@@ -829,7 +844,7 @@ export default function MatchForm({
               </span>
               <button
                 type="button"
-                onClick={() => removeFile(f.id)}
+                onClick={() => removeFile(f.id, exportDisplayLabel(f.label) || f.id)}
                 className="flex-shrink-0 text-xs text-textDim hover:text-taken"
               >
                 Remove
