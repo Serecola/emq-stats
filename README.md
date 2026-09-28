@@ -74,7 +74,7 @@ Next.js adds the prefix for you when you use `<Link href>` or
 hand, so those need `withBasePath()` from `lib/base-path.ts`:
 
 - `fetch()` calls in client components (login, logout, the Player Manager
-  writes, match delete)
+  writes, the match form's save, match delete)
 - a native `<form action>` — a no-JS submit is a plain browser navigation
 - the login redirect in `middleware.ts` (built from `req.nextUrl.clone()`, which
   re-adds the prefix on serialize)
@@ -101,6 +101,37 @@ viewer and `/emq-stats/admin` for the admin panel.
    `TURSO_AUTH_TOKEN`).
 3. Deploy. `/admin` is gated by `middleware.ts` using the session cookie set
    at `/admin/login`.
+
+## Serving behind nginx
+
+Production is a `next start` process behind nginx on the same host, so the
+proxy's limits apply on top of the app's:
+
+- **`client_max_body_size`** — nginx defaults to **1 MB**, but a tournament is
+  saved as a *single* request carrying every raw export attached to it (~2 MB
+  for one export, several times that for a bracket with half a dozen). Over the
+  limit nginx answers **413 Request Entity Too Large** while it is still
+  reading the body, so the request never reaches Next and the admin form can
+  only report that the save failed. Raise it on the server that fronts the app:
+
+  ```nginx
+  server {
+    client_max_body_size 64m;
+
+    location /emq-stats {
+      proxy_pass http://127.0.0.1:3000;
+    }
+  }
+  ```
+
+  Vercel has the same shape of limit (~4.5 MB per request body) and no way to
+  raise it, which is one reason production runs behind nginx. The app itself
+  puts no cap of its own on the body: `POST`/`PUT /api/matches` streams it
+  through `req.json()`.
+
+- **`proxy_read_timeout`** — a save also walks the tournament's JSON to rebuild
+  the player/song catalog before it responds, which on a large bracket can pass
+  nginx's 60s default. Give the proxy headroom (`proxy_read_timeout 300s;`).
 
 ## Searching tournaments by player
 

@@ -5,7 +5,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'EMQ Stats',
-  description: 'Attack/block stats viewer for EMQ team tournaments',
+  description: 'Stats Viewer for EMQ Tournaments',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

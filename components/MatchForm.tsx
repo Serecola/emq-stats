@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import type { Match, MatchFile, Mode, Region, SetRanks, Submode } from '@/lib/types';
 import { MODES, REGIONS, SUBMODES_BY_MODE } from '@/lib/types';
+import { withBasePath } from '@/lib/base-path';
 import { parseTeamsBlob, parsePlayerRanks, teamsToBlob } from '@/lib/teams';
 import { savedRanksFor } from '@/lib/player-ranks';
 import TeamDrafter from '@/components/TeamDrafter';
@@ -408,16 +409,30 @@ export default function MatchForm({
       renames,
       playerRanks: parsedPlayerRanks,
     };
-    const res = await fetch(existing ? `/api/matches/${existing.id}` : '/api/matches', {
-      method: existing ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    // withBasePath: the request carries the whole tournament (raw exports and
+    // all), and a hand-built URL gets no prefix from the router — without it
+    // this POST leaves the app's mount and lands on the host root.
+    const res = await fetch(
+      withBasePath(existing ? `/api/matches/${existing.id}` : '/api/matches'),
+      {
+        method: existing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
     setSubmitting(false);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setFormError(body.error || 'Failed to save match.');
+      // A 413 is the proxy refusing the body on size, so the response is its
+      // HTML error page rather than our JSON — say what actually went wrong
+      // instead of the generic fallback the failed parse would give.
+      setFormError(
+        body.error ||
+          (res.status === 413
+            ? 'The server refused this tournament as too large (413). Raise client_max_body_size in the nginx config — see the README.'
+            : 'Failed to save match.')
+      );
       return;
     }
     const saved = await res.json();
