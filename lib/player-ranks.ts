@@ -1,5 +1,6 @@
 import { norm } from './stats';
 import { computeAllPlayerStats } from './player-stats';
+import { resolveAliasKey, type PlayerAliases } from './player-aliases';
 import type { ExpectationLabel } from './expectation';
 import { expectationFromDiff } from './expectation';
 import type { Match, SetRanks } from './types';
@@ -58,7 +59,8 @@ export function computePlayerRankRows(
   gamemodeMatches: Match[],
   setRanks: SetRanks,
   mode: string,
-  submode: string
+  submode: string,
+  aliases: PlayerAliases = {}
 ): PlayerRankRow[] {
   const ranks = setRanks[mode]?.[submode] ?? {};
   const isErumode = mode === 'Erumode';
@@ -94,13 +96,13 @@ export function computePlayerRankRows(
   };
 
   // Primary rows: played this exact gamemode + sub-mode.
-  for (const p of computeAllPlayerStats(submodeMatches)) {
+  for (const p of computeAllPlayerStats(submodeMatches, aliases)) {
     const aggregate = isErumode ? p.erumode : p.ngmc;
     if (aggregate.matchesPlayed === 0) continue;
     addRow(p.uname, aggregate, 'submode');
   }
   // Fallback rows: known in this gamemode, but not in this sub-mode yet.
-  for (const p of computeAllPlayerStats(gamemodeMatches)) {
+  for (const p of computeAllPlayerStats(gamemodeMatches, aliases)) {
     const aggregate = isErumode ? p.erumode : p.ngmc;
     if (aggregate.matchesPlayed === 0) continue;
     addRow(p.uname, aggregate, 'gamemode');
@@ -141,10 +143,14 @@ export function expectedRanksFor(
   submodeMatches: Match[],
   gamemodeMatches: Match[],
   mode: string,
-  submode: string
+  submode: string,
+  aliases: PlayerAliases = {}
 ): Record<string, number> | null {
   const isErumode = mode === 'Erumode';
-  const allStats = computeAllPlayerStats(submodeMatches.length ? submodeMatches : gamemodeMatches);
+  const allStats = computeAllPlayerStats(
+    submodeMatches.length ? submodeMatches : gamemodeMatches,
+    aliases
+  );
   if (!allStats.length) return null;
 
   const ranks: Record<string, number> = {};
@@ -154,7 +160,9 @@ export function expectedRanksFor(
     // Use the submode aggregate when available, otherwise the gamemode aggregate.
     const expectedRank = aggregate.overallPerformance;
     if (expectedRank > 0) {
-      ranks[norm(p.uname)] = expectedRank;
+      // Keyed by the canonical name so autodraft balances a merged identity as
+      // one player, and so a Set Rank saved before the alias still lines up.
+      ranks[resolveAliasKey(p.uname, aliases)] = expectedRank;
     }
   }
   return Object.keys(ranks).length > 0 ? ranks : null;
@@ -175,10 +183,11 @@ export function recentExpectedRanksFor(
   submodeMatches: Match[],
   gamemodeMatches: Match[],
   mode: string,
-  limit = 5
+  limit = 5,
+  aliases: PlayerAliases = {}
 ): Record<string, number> | null {
   const source = submodeMatches.length ? submodeMatches : gamemodeMatches;
-  const allStats = computeAllPlayerStats(source);
+  const allStats = computeAllPlayerStats(source, aliases);
   if (!allStats.length) return null;
 
   const ranks: Record<string, number> = {};
@@ -197,7 +206,7 @@ export function recentExpectedRanksFor(
     if (songs === 0) continue;
     const expectedRank = weighted / songs;
     if (expectedRank > 0) {
-      ranks[norm(p.uname)] = expectedRank;
+      ranks[resolveAliasKey(p.uname, aliases)] = expectedRank;
     }
   }
   return Object.keys(ranks).length > 0 ? ranks : null;

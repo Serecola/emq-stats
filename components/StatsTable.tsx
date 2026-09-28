@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import type { MatchStats, PlayerStats, PlayerTag, TeamStats } from '@/lib/types';
-import { norm } from '@/lib/stats';
 import { teamColor } from '@/lib/team-colors';
 import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
 import PlayerTagBadge from './PlayerTagBadge';
@@ -40,9 +39,9 @@ export default function StatsTable({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-xs">
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
             <th className="w-10 px-3 py-2 font-medium">#</th>
             <SortableHeader label="Player" sortKey="uname" activeKey={sortKey} dir={sortDir} onClick={onSort} align="left" />
             <SortableHeader label="Correct" sortKey="correct" activeKey={sortKey} dir={sortDir} onClick={onSort} className="w-20" />
@@ -149,7 +148,7 @@ function TeamRows({
             >
               {m.uname}
             </button>
-            <PlayerTagBadge tag={playerTags?.[norm(m.uname)]} className="ml-1.5" />
+            <PlayerTagBadge uname={m.uname} overrides={playerTags} className="ml-1.5" />
           </td>
           <td className="px-3 py-2 text-right text-textMuted">{m.correct}</td>
           <td className="px-3 py-2 text-right font-medium text-taken">

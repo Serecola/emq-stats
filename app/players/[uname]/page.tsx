@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { findPlayerStats, listPlayerTags } from '@/lib/store';
-import { norm } from '@/lib/stats';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import type { PlayerMatchEntry } from '@/lib/player-stats';
 import {
@@ -49,7 +48,7 @@ export default async function PlayerPage({
         </Link>
         <h1 className="text-lg font-semibold">
           {overall.uname}
-          <PlayerTagBadge tag={tags[norm(overall.uname)]} className="ml-2" />
+          <PlayerTagBadge uname={overall.uname} overrides={tags} className="ml-2" />
         </h1>
         <p className="text-sm text-textMuted">
           No {filterLabel || 'matching'} tournaments played.{' '}
@@ -82,7 +81,7 @@ export default async function PlayerPage({
         </Link>
         <h1 className="mt-2 text-lg font-semibold">
           {player.uname}
-          <PlayerTagBadge tag={tags[norm(player.uname)]} className="ml-2" />
+          <PlayerTagBadge uname={player.uname} overrides={tags} className="ml-2" />
         </h1>
         <p className="text-xs text-textDim">
           {filterLabel ? `${filterLabel} · ` : ''}

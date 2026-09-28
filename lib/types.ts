@@ -84,12 +84,19 @@ export interface MatchSummary extends Omit<Match, 'files'> {
 export type SetRanks = Record<string, Record<string, Record<string, number>>>;
 
 /**
- * Admin-assigned identity tag for a username — "Player" or "Bot". Global
- * (one tag per username across every gamemode, unlike Set Ranks): a bot is
- * a bot everywhere. Stored keyed by normalized username, the same identity
- * stats and Set Ranks use, and `null`/missing means "untagged".
+ * The one stored decision about a username's identity, keyed by normalized
+ * username like stats and Set Ranks. Global (one row per username across every
+ * gamemode, unlike Set Ranks): a bot is a bot everywhere.
+ *
+ *   Bot     — force the bot badge on.
+ *   NotBot  — force it off, overriding the automatic "username contains Bot"
+ *             rule. This is the false-alarm escape hatch (RobotFan, Botanist).
+ *
+ * A *missing* row means "no decision", and the name rule then decides — which
+ * is why ordinary players never need a row at all. See lib/player-tags.ts for
+ * the rule and `resolvePlayerTag`, the only thing any view should call.
  */
-export type PlayerTag = 'Player' | 'Bot';
+export type PlayerTag = 'Bot' | 'NotBot';
 
 // Payload shape used when creating/updating a match from the admin panel.
 export interface MatchInput {

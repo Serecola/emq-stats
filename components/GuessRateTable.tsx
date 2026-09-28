@@ -7,7 +7,7 @@ import { expectationFromDiff } from '@/lib/expectation';
 import { teamColor } from '@/lib/team-colors';
 import ExpectationBadge from './ExpectationBadge';
 import PlayerTagBadge from './PlayerTagBadge';
-import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
+import { SortableHeader, toggleSort, compareValues, DENSE_CELL_PAD, type SortDir } from './SortableTable';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -20,13 +20,31 @@ function num(n: number): string {
 
 // Display labels for Erumode answer-type columns — internal keys (matching
 // the raw JSON's AnsType strings) stay as-is; only the header text changes.
+// The long staff credits are abbreviated so a tournament with several active
+// answer types doesn't push the table out to ~1500px; answerTypeTitle keeps
+// the full name available on hover.
 const ANSWER_TYPE_LABELS: Record<string, string> = {
   Mst: 'VN',
   A: 'Artist',
   Mt: 'SN',
+  Developer: 'Dev',
+  Composer: 'Comp',
+  Arranger: 'Arr',
+  Lyricist: 'Lyr',
 };
 function answerTypeLabel(t: string): string {
   return ANSWER_TYPE_LABELS[t] ?? t;
+}
+// Full wording behind a short header, for its hover title. Only the types
+// whose label is an initialism need one — Rigger, Developer, Composer,
+// Arranger and Lyricist already read as themselves.
+const ANSWER_TYPE_NAMES: Record<string, string> = {
+  Mst: 'Main title',
+  A: 'Artist',
+  Mt: 'Song name',
+};
+function answerTypeTitle(t: string): string {
+  return `${ANSWER_TYPE_NAMES[t] ?? t} guess rate`;
 }
 
 // Subtle per-tier row tints — T1..T4 only; anything beyond that (or
@@ -77,9 +95,12 @@ function GenericSortableTable<T extends { uname: string }>({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      <table className="w-full border-collapse text-sm" style={{ minWidth }}>
+      {/* Dense type: the body is one step down from the app's text-sm and the
+          header one step below that, so ~20 narrow stat columns stay legible
+          without the rows growing taller. */}
+      <table className="w-full border-collapse text-xs" style={{ minWidth }}>
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}
@@ -91,6 +112,7 @@ function GenericSortableTable<T extends { uname: string }>({
                 align={c.key === 'uname' ? 'left' : 'right'}
                 title={c.title}
                 className={c.className}
+                pad={DENSE_CELL_PAD}
                 highlighted={hoveredCol === c.key}
                 onMouseEnter={() => setHoveredCol(c.key)}
                 onMouseLeave={() => setHoveredCol(null)}
@@ -113,7 +135,7 @@ function GenericSortableTable<T extends { uname: string }>({
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    className={`px-3 py-2 ${c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted'} ${
+                    className={`${DENSE_CELL_PAD} ${c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted tabular-nums'} ${
                       hoveredCol === c.key ? 'bg-white/5' : ''
                     } ${c.className ?? ''}`}
                     onMouseEnter={() => setHoveredCol(c.key)}
@@ -182,13 +204,14 @@ export default function GuessRateTable({
   const nameRender = (r: { uname: string }): React.ReactNode => (
     <span style={{ color: colorOf(r.uname) }}>
       {r.uname}
-      <PlayerTagBadge tag={playerTags?.[norm(r.uname)]} className="ml-1.5" />
+      <PlayerTagBadge uname={r.uname} overrides={playerTags} className="ml-1.5" />
     </span>
   );
 
   const tierColumn = <T extends { uname: string }>(): Column<T> => ({
     key: 'tier',
     label: 'Tier',
+    title: 'Tier — roster position within their team (1st listed = T1)',
     accessor: (r) => tierOf(r.uname) ?? Infinity,
     render: (r) => {
       const t = tierOf(r.uname);
@@ -197,15 +220,16 @@ export default function GuessRateTable({
   });
   const rankColumn = <T extends { uname: string }>(): Column<T> => ({
     key: 'rank',
-    label: 'Current Rank',
+    label: 'Rank',
+    title: 'Current Rank — the number parsed from the "(N)" next to their name in the roster',
     accessor: (r) => rankOf(r.uname) ?? Infinity,
     render: (r) => rankOf(r.uname) ?? '—',
   });
 
   const performanceColumn = <T extends { uname: string; performance: number }>(): Column<T> => ({
     key: 'performance',
-    label: 'Performance',
-    title: 'Computed rating for cross-tournament comparison',
+    label: 'Perf',
+    title: 'Performance — computed rating for cross-tournament comparison',
     accessor: (r) => r.performance,
     render: (r) => <span className="font-medium text-textSub">{r.performance.toFixed(2)}</span>,
   });
@@ -216,9 +240,9 @@ export default function GuessRateTable({
   // meaningful when the player has a Current Rank to compare against.
   const expectationColumn = <T extends { uname: string; performance: number }>(): Column<T> => ({
     key: 'expectation',
-    label: 'Expectation',
-    title: 'Performance − Current Rank',
-    className: 'border-r border-border min-w-[110px]',
+    label: 'Expect.',
+    title: 'Expectation — Performance − Current Rank',
+    className: 'border-r border-border',
     accessor: (r) => {
       const rank = rankOf(r.uname);
       return rank === null ? -Infinity : r.performance - rank;
@@ -228,6 +252,41 @@ export default function GuessRateTable({
       if (rank === null) return '—';
       return <ExpectationBadge label={expectationFromDiff(r.performance - rank)} />;
     },
+  });
+
+  // Off-list guess rate. Shared by both mode tables — lib/guess-stats.ts
+  // derives it the same way for each (correct off-list hits over off-list
+  // opportunities), so the column reads identically in either.
+  const offlistGrColumn = <T extends { offlistGr: number }>(): Column<T> => ({
+    key: 'offlistGr',
+    label: 'Off GR',
+    title: 'Offlist GR — % correct among guesses not on their pre-made list',
+    accessor: (r) => r.offlistGr,
+    render: (r) => pct(r.offlistGr),
+  });
+
+  // Trailing count columns, shared so their short labels and their tooltips
+  // can't drift apart between the NGMC and Erumode tables.
+  const rigCountColumn = <T extends { rigCount: number }>(): Column<T> => ({
+    key: 'rigCount',
+    label: 'Rigs',
+    title: 'Rig Count — total guesses that were on their pre-made list',
+    className: 'border-r border-border',
+    accessor: (r) => r.rigCount,
+    render: (r) => r.rigCount,
+  });
+  const songsColumn = <T extends { songs: number }>(): Column<T> => ({
+    key: 'songs',
+    label: 'Songs',
+    accessor: (r) => r.songs,
+    render: (r) => r.songs,
+  });
+  const gamesColumn = <T extends { games: number }>(): Column<T> => ({
+    key: 'games',
+    label: 'Games',
+    title: 'Games — number of game files their stats come from',
+    accessor: (r) => r.games,
+    render: (r) => r.games,
   });
 
   if (stats.mode === 'Erumode') {
@@ -244,26 +303,29 @@ export default function GuessRateTable({
       expectationColumn<ErumodeGuessRow>(),
       {
         key: 'guessRate',
-        label: 'Guess Rate',
+        label: 'GR',
+        title: 'Guess Rate — % of their guesses that were correct',
         accessor: (r) => r.guessRate,
         render: (r) => <span className="text-accent">{pct(r.guessRate)}</span>,
       },
       ...stats.activeTypes.map((t) => ({
         key: `type:${t}`,
         label: answerTypeLabel(t),
+        title: answerTypeTitle(t),
         accessor: (r: ErumodeGuessRow) => r.perType[t] ?? 0,
         render: (r: ErumodeGuessRow) => <span className="text-textSub">{pct(r.perType[t] ?? 0)}</span>,
       })),
       { key: 'rigGr', label: 'Rig GR', className: 'border-l border-border', accessor: (r) => r.rigGr, render: (r) => <span className="text-textSub">{pct(r.rigGr)}</span> },
-      { key: 'rigCount', label: 'Rig Count', className: 'border-r border-border', accessor: (r) => r.rigCount, render: (r) => r.rigCount },
-      { key: 'songs', label: 'Songs', accessor: (r) => r.songs, render: (r) => r.songs },
-      { key: 'games', label: 'Games', accessor: (r) => r.games, render: (r) => r.games },
+      offlistGrColumn<ErumodeGuessRow>(),
+      rigCountColumn<ErumodeGuessRow>(),
+      songsColumn<ErumodeGuessRow>(),
+      gamesColumn<ErumodeGuessRow>(),
     ];
     return (
       <GenericSortableTable
         columns={columns}
         rows={stats.erumodeRows}
-        minWidth={780 + stats.activeTypes.length * 90}
+        minWidth={550 + stats.activeTypes.length * 56}
         defaultSortKey="guessRate"
         rowTier={(r) => tierOf(r.uname)}
       />
@@ -283,7 +345,8 @@ export default function GuessRateTable({
     expectationColumn<NgmcGuessRow>(),
     {
       key: 'guessRate',
-      label: 'Guess Rate',
+      label: 'GR',
+      title: 'Guess Rate — % of their guesses that were correct',
       accessor: (r) => r.guessRate,
       render: (r) => <span className="text-accent">{pct(r.guessRate)}</span>,
     },
@@ -319,23 +382,17 @@ export default function GuessRateTable({
       accessor: (r) => r.rigGr,
       render: (r) => pct(r.rigGr),
     },
-    { key: 'rigCount', label: 'Rig Count', className: 'border-r border-border', accessor: (r) => r.rigCount, render: (r) => r.rigCount },
-    {
-      key: 'offlistGr',
-      label: 'Offlist GR',
-      title: '% correct among guesses not on their pre-made list',
-      accessor: (r) => r.offlistGr,
-      render: (r) => pct(r.offlistGr),
-    },
+    offlistGrColumn<NgmcGuessRow>(),
+    rigCountColumn<NgmcGuessRow>(),
     { key: 'correct', label: 'Correct', accessor: (r) => r.correct, render: (r) => r.correct },
-    { key: 'songs', label: 'Songs', accessor: (r) => r.songs, render: (r) => r.songs },
-    { key: 'games', label: 'Games', accessor: (r) => r.games, render: (r) => r.games },
+    songsColumn<NgmcGuessRow>(),
+    gamesColumn<NgmcGuessRow>(),
   ];
   return (
     <GenericSortableTable
       columns={columns}
       rows={stats.ngmcRows}
-      minWidth={1100}
+      minWidth={760}
       defaultSortKey="guessRate"
       rowTier={(r) => tierOf(r.uname)}
     />

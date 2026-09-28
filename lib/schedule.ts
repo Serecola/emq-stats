@@ -228,6 +228,23 @@ export function exportTimestamp(label: string): string | null {
 }
 
 /**
+ * The export's own name as it should be *shown*, without the prefix the game
+ * writes into every one of them: `EMQ_SongHistory_2026-09-27T01_52_55` →
+ * `2026-09-27T01_52_55`.
+ *
+ * Display only. The stored label keeps the prefix, because that name is the
+ * file's real identity: a download hands it back under exactly that name, and
+ * the bracket reads a pair's two legs' play time out of it (see
+ * exportTimestamp). The prefix is identical on every upload, so it says
+ * nothing the viewer doesn't already know, and all it does is push the
+ * timestamp that *does* differ off the end of a truncated filename. Names
+ * without it (a hand-saved file, say) and empty labels come back untouched.
+ */
+export function exportDisplayLabel(label: string): string {
+  return label.replace(/^EMQ_SongHistory_/i, '');
+}
+
+/**
  * Orders two exports by the time in their names, earliest first. This is the
  * order pass 2 of matchFilesToBracket tries them in, so when a pair has two
  * recorded games the earlier one lands on the pair's first fixture and the
@@ -329,6 +346,20 @@ export interface StatsScope {
 /** True when the scope keeps nothing out — the whole tournament's stats. */
 export function isFullScope(scope: StatsScope): boolean {
   return scope.rounds.length === 0 && scope.games.length === 0;
+}
+
+/**
+ * The query string a scope is addressed by: rounds as `?rounds=3,4,6`, games
+ * as a comma list of slots like `?games=r5m0,r6m0`, and nothing at all for
+ * the full scope. Rounds and games never mix in one URL — a round selection
+ * wins — so there is no case where both need serializing.
+ */
+export function scopeQuery(scope: StatsScope): string {
+  const params = new URLSearchParams();
+  if (scope.rounds.length > 0) params.set('rounds', scope.rounds.join(','));
+  else if (scope.games.length > 0) params.set('games', scope.games.join(','));
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 /**

@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import AdminNav from '@/components/AdminNav';
+import { resolvePlayerTag } from '@/lib/player-tags';
 import ModeToggle from '@/components/ModeToggle';
 import PlayerRankTable from '@/components/PlayerRankTable';
 import PlayerTagManager from '@/components/PlayerTagManager';
 import {
   listMatchSummaries,
+  listPlayerAliases,
   listPlayerRankRows,
   listPlayerStats,
   listPlayerTags,
@@ -29,6 +31,20 @@ const tabChipClass = (isActive: boolean): string =>
       : 'border border-border text-textMuted hover:border-textSub hover:text-text'
   }`;
 
+/**
+ * Href for one of the sub-tabs, carrying the active mode + sub-mode across
+ * (see `tabs`). `matchFilterQuery` already returns a leading "?", so the tab
+ * param is written first and the filter is then joined with "&" — gluing the
+ * filter straight onto "?tab=tags" would nest a second "?" inside the tab's
+ * own value ("tab=tags?mode=Erumode"), which then fails the `=== 'tags'`
+ * check in this page and silently re-renders the Ranks tab. Appending
+ * `tab` after the filter is no better: "?mode=…&tab=…" is a second "?" too.
+ */
+function tabHref(tab: 'ranks' | 'tags', filter: MatchFilter): string {
+  const filterQuery = matchFilterQuery(filter);
+  return `/admin/players?tab=${tab}${filterQuery ? `&${filterQuery.slice(1)}` : ''}`;
+}
+
 export default async function AdminPlayersPage({
   searchParams,
 }: {
@@ -48,32 +64,33 @@ export default async function AdminPlayersPage({
   // only `tab` is added/dropped, so coming back lands on the same ladder.
   const tabs = (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Link
-        href={`/admin/players${matchFilterQuery(filter)}`}
-        className={tabChipClass(tab === 'ranks')}
-      >
+      <Link href={tabHref('ranks', filter)} className={tabChipClass(tab === 'ranks')}>
         Set Ranks
       </Link>
-      <Link
-        href={`/admin/players?tab=tags${matchFilterQuery(filter)}`}
-        className={tabChipClass(tab === 'tags')}
-      >
+      <Link href={tabHref('tags', filter)} className={tabChipClass(tab === 'tags')}>
         Player Tags
       </Link>
     </div>
   );
 
   // ---- Player Tags tab ----------------------------------------------------
-  // Tags are global (one label per username across every gamemode), so this
-  // tab ignores the ModeToggle filter and lists everyone from every match.
+  // Aliases and bot overrides are both global (one per username across every
+  // gamemode), so this tab ignores the ModeToggle filter and lists everyone
+  // from every match.
   if (tab === 'tags') {
     const players = await listPlayerStats(ALL_MATCH_FILTER);
     const tags = await listPlayerTags();
-    const taggedCount = Object.keys(tags).length;
-    const botCount = Object.values(tags).filter((t) => t === 'Bot').length;
+    const aliases = await listPlayerAliases();
+    // Counted through the shared resolver, so the summary agrees with the bot
+    // pills on the public views — most of these are automatic, not stored.
+    const botCount = players.filter((p) => resolvePlayerTag(p.uname, tags) === 'Bot').length;
+    const overrideCount = Object.keys(tags).length;
+    const aliasCount = Object.keys(aliases).length;
     const summary =
       `${players.length} username${players.length !== 1 ? 's' : ''} across every ` +
-      `tournament · ${taggedCount} tagged · ${botCount} bot${botCount !== 1 ? 's' : ''}`;
+      `tournament · ${botCount} bot${botCount !== 1 ? 's' : ''}` +
+      (aliasCount > 0 ? ` · ${aliasCount} alias${aliasCount !== 1 ? 'es' : ''}` : '') +
+      (overrideCount > 0 ? ` · ${overrideCount} override${overrideCount !== 1 ? 's' : ''}` : '');
 
     return (
       <div className="space-y-6">
@@ -89,16 +106,36 @@ export default async function AdminPlayersPage({
         <PlayerTagManager
           players={players.map((p) => ({ uname: p.uname, matchesPlayed: p.matchesPlayed }))}
           tags={tags}
+          aliases={aliases}
         />
         <p className="text-xs text-textDim">
-          Tags are global — one label per username across every gamemode, stored under the
-          same normalized-username identity as Set Ranks. A name tagged{' '}
-          <span className="font-medium text-textMuted">Bot</span> gets a{' '}
+          <span className="font-medium text-textMuted">Aliases</span> merge two names for the same
+          person everywhere: aggregated stats, player pages, Expected Ranks and the autodrafter all
+          follow the alias, and the alias&apos;s Set Ranks move onto the player you add it to. Use one
+          when someone turns up under a second username in a different tournament — a match&apos;s own
+          renames only ever fix that single match. Removing an alias splits the names back apart;
+          anything already moved to the canonical player stays there. The{' '}
+          <span className="font-medium text-textMuted">✎</span> next to a username renames a
+          player — the current name is kept as an alias of the new one, so tournaments that recorded
+          the old name still count towards them, and a change of capitalisation counts too. The{' '}
+          <span className="font-medium text-textMuted">⇄</span> on an alias swaps the two: it
+          becomes the main name and the current one its alias.
+        </p>
+        <p className="text-xs text-textDim">
+          Any username containing{' '}
+          <span className="font-medium text-textMuted">Bot</span> is badged as a bot automatically,
+          so ordinary players never need tagging. Click{' '}
+          <span className="font-medium text-textMuted">Bot</span> on one of those to mark it as a
+          real player when the name is a false alarm (RobotFan, Botanist) — it gets a{' '}
+          <span className="font-medium text-textMuted">not a bot</span> override instead, and the{' '}
+          <span className="font-medium text-textMuted">auto</span> button puts any override back
+          under the name rule. Bots get a{' '}
           <span className="rounded-full border border-border bg-surfaceAlt px-1.5 py-0.5 text-[0.65rem] text-textMuted">
             bot
           </span>{' '}
-          pill next to it on public player pages and stats tables. Click the active tag
-          again to clear it.
+          pill next to them on public player pages and stats tables. Both aliases and overrides are
+          global — one per normalized username across every gamemode, stored under the same
+          identity as Set Ranks.
         </p>
       </div>
     );

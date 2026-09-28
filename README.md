@@ -100,17 +100,40 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
 
 ### Player Tags tab
 
-The Player Manager's second tab (`/admin/players?tab=tags`) labels usernames
-as **Player** or **Bot**. Unlike Set Ranks this is *global* — one tag per
-normalized username across every gamemode (a bot is a bot everywhere), stored
-in the `player_tags` table and saved via `PUT /api/admin/player-tags`. The
-tab lists every username from every tournament with search and
-All/Untagged/Player/Bot filters; clicking the active tag again clears it.
+Holds the two global, per-username facts that aren't a rank: who is a bot, and
+which names are the same person.
 
-Tags only label for now: a name tagged Bot gets a `bot` pill next to it on
-the public player pages (`/players`, `/players/[uname]`) and in the match
-stats tables (Guess Rate and Attacks & Blocks), and nothing filters stats or
-autodraft on the tag yet.
+**Bots.** Any username containing **"Bot"** (case-insensitive) is badged
+automatically, so AisuBot and KreiBot need no admin work and ordinary players are
+never tagged. The rule lives in `lib/player-tags.ts`, and
+`resolvePlayerTag(name, overrides)` is the single function every view calls, so
+the Player Manager and the public badges can never disagree.
+
+**Aliases.** The cross-match identity link, in the `player_aliases` table via
+`PUT /api/admin/player-aliases`. A match's own `renames` map only ever fixes that
+one tournament's roster paste, so the same person spelling their name two ways
+across two tournaments still aggregated as two separate players. An alias is
+global and retroactive: it feeds the *same* name-resolution path `renames` does
+(`withAliases` in `lib/player-aliases.ts`), so once one is set
+
+- both names' tournaments aggregate into a single player on `/players` and
+  `/players/[uname]`, and their per-match rows credit the canonical name;
+- Expected Ranks and the autodrafter's "Expected (last 5)" treat them as one
+  ladder entry, keyed by the canonical name;
+- a Set Rank saved under the old name moves onto the canonical player, as does
+  its bot/override row (the canonical player's own value wins on conflict, so
+  nothing it was explicitly set to gets clobbered).
+
+Chains are flattened (`Aisu → aisu → AisuBot` resolves to `AisuBot`) and cycles
+are refused rather than followed. Adding an alias is a deliberate merge, not a
+rename you can undo one field at a time: removing it splits the names back
+apart, but anything already migrated to the canonical player stays there.
+
+Both kinds of row are *global* — one per normalized username across every
+gamemode — and both ignore the ModeToggle filter, so the tab lists every
+username from every tournament. A resolved bot gets a `bot` pill next to it on
+the public player pages and in the match stats tables; nothing filters stats or
+autodraft on the tag itself.
 
 ### Autodraft rank sources
 
@@ -135,9 +158,11 @@ override on top of it, and only names actually listed can enter the draft
 (see `mergeHiddenRanks` in `lib/balance.ts`).
 
 Player identity is the normalized username (the same identity stats aggregate
-by) — there's no cross-match account linking, so a name that's spelled
-differently in one match is ranked as a separate player unless that match's
-renames map reconciles it.
+by), reconciled by two layers of name mapping: a match's own `renames` map, which
+fixes that one tournament's roster paste, and the global **aliases** above, which
+reconcile the same person across every tournament. A match's renames win where
+the two disagree — they're the more specific statement, made against that
+match's raw JSON.
 
 ## How stats are computed
 

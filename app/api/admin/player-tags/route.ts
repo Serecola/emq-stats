@@ -3,16 +3,21 @@ import { setPlayerTag } from '@/lib/store';
 import type { PlayerTag } from '@/lib/types';
 
 /**
- * Sets or clears one username's global Player/Bot tag — the identity label
- * the Player Manager's "Player Tags" tab edits and the public views badge
- * with. Unlike Set Ranks there is no mode/sub-mode dimension: a bot is a
- * bot in every gamemode, so the row is keyed by username alone.
+ * Sets or clears one username's global bot decision — the override the
+ * Player Manager's "Player Tags" tab edits and the public views badge with.
+ * Unlike Set Ranks there is no mode/sub-mode dimension: a bot is a bot in
+ * every gamemode, so the row is keyed by username alone.
+ *
+ * Most usernames have no row at all: the automatic "username contains Bot"
+ * rule (lib/player-tags.ts) decides for them. A row exists only to override
+ * that rule — `Bot` to force it on, `NotBot` to silence a false alarm, and
+ * `null` to drop the override and fall back to the name again.
  *
  * PUT (not POST) because this is idempotent per username: the tab saves a
  * single cell, and re-sending the same value is a no-op. `/api/admin/*` is
  * already gated by middleware.ts.
  */
-const VALID_TAGS: readonly PlayerTag[] = ['Player', 'Bot'];
+const VALID_TAGS: readonly PlayerTag[] = ['Bot', 'NotBot'];
 
 export async function PUT(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as

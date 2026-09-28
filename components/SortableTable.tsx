@@ -3,6 +3,14 @@
 export type SortDir = 'asc' | 'desc';
 
 /**
+ * Tighter cell padding for the very wide stats tables. The match Guess Rate
+ * table spans ~20 columns, where the default 0.75rem side gutters alone add a
+ * few hundred pixels of horizontal scroll — this halves the per-column cost.
+ * Exported so the header and the body cells of one table can never drift apart.
+ */
+export const DENSE_CELL_PAD = 'px-2 py-1.5';
+
+/**
  * Clickable <th> that toggles ascending/descending sort on click and shows
  * an arrow when it's the active sort column. First click on a new column
  * uses `defaultDir` (numeric stat columns default to descending — highest
@@ -20,6 +28,7 @@ export function SortableHeader({
   highlighted = false,
   onMouseEnter,
   onMouseLeave,
+  pad = 'px-3 py-2',
 }: {
   label: React.ReactNode;
   sortKey: string;
@@ -32,11 +41,13 @@ export function SortableHeader({
   highlighted?: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Cell padding override — pass DENSE_CELL_PAD for the wide stats tables. */
+  pad?: string;
 }) {
   const active = activeKey === sortKey;
   return (
     <th
-      className={`cursor-pointer select-none px-3 py-2 font-medium hover:text-textSub ${
+      className={`cursor-pointer select-none whitespace-nowrap ${pad} font-medium hover:text-textSub ${
         align === 'right' ? 'text-right' : 'text-left'
       } ${highlighted ? 'bg-white/5' : ''} ${className}`}
       title={title}
@@ -44,9 +55,11 @@ export function SortableHeader({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <span className="inline-flex items-center gap-1">
+      {/* The arrow slot is always reserved (fixed width, empty when inactive)
+          so clicking a header never reflows the row around it. */}
+      <span className="inline-flex items-center gap-0.5">
         {label}
-        <span className="w-2.5 text-[0.6rem] text-textDim">{active ? (dir === 'asc' ? '▲' : '▼') : ''}</span>
+        <span className="w-2 text-[0.6rem] text-textDim">{active ? (dir === 'asc' ? '▲' : '▼') : ''}</span>
       </span>
     </th>
   );

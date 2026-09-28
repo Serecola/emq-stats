@@ -134,15 +134,42 @@ export function ensureSchema(): Promise<void> {
       )`;
       await db.execute(createPlayerSetRanks);
 
-      // Admin-assigned Player/Bot identity tag — one row per *global*
-      // username (normalized, like player_set_ranks' player_key), because a
-      // bot is a bot in every gamemode. Absent row = untagged. The tag only
-      // labels; nothing filters on it yet, so no migration ever needs to
-      // backfill this table.
+      // Bot decision override — one row per *global* username (normalized,
+      // like player_set_ranks' player_key), because a bot is a bot in every
+      // gamemode. Absent row is the common case: the automatic name rule in
+      // lib/player-tags.ts answers for those usernames, so this table only
+      // holds the admin's exceptions in either direction.
       await db.execute(
         `CREATE TABLE IF NOT EXISTS player_tags (
           player_key TEXT PRIMARY KEY,
           tag TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`
+      );
+
+      // An earlier build offered a "Player" tag next to "Bot" — an admin
+      // label meaning "definitely a human". That role now belongs to absence,
+      // since the name rule leaves ordinary players alone on its own. Those
+      // rows aren't dead weight, though: a "Player" row on a name like
+      // "RobotFan" was a deliberate correction of a false alarm, which is
+      // exactly what the `NotBot` override means today. Idempotent — once the
+      // rows are converted this matches nothing.
+      await db.execute("UPDATE player_tags SET tag = 'NotBot' WHERE tag = 'Player'");
+
+      // Global alternate-name map: a normalized username an admin has declared
+      // to be "the same person as" a canonical one. This is the cross-match
+      // identity link the per-match `renames` map can't be — those are scoped
+      // to one tournament's roster paste, so the same person spelled two ways
+      // in two unrelated tournaments still aggregates as two players. Here one
+      // row is enough for the whole database, and it feeds the same
+      // name-resolution path `renames` does, so stats, Expected Ranks and
+      // autodraft all follow one identity. `display_name` is the canonical
+      // name as it should be *shown* (its normalized form is the key), so
+      // merged rows keep proper casing instead of going lowercase.
+      await db.execute(
+        `CREATE TABLE IF NOT EXISTS player_aliases (
+          alias_key TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )`
       );

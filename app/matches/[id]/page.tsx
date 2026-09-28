@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getMatch, listPlayerTags } from '@/lib/store';
+import { getMatch, listPlayerAliases, listPlayerTags } from '@/lib/store';
+import { withAliases } from '@/lib/player-aliases';
 import { computeMatchStats } from '@/lib/stats';
 import type { MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
@@ -20,7 +21,6 @@ import GuessRateTable from '@/components/GuessRateTable';
 import ResultsSection from '@/components/ResultsSection';
 import MvpSection from '@/components/MvpSection';
 import RoundRobinGrid from '@/components/RoundRobinGrid';
-import MatchStatsScope from '@/components/MatchStatsScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +52,11 @@ export default async function MatchPage({
 
   // Global Player/Bot tags for the bot pills in the stats tables below.
   const playerTags = await listPlayerTags();
+  // Global aliases, folded under this match's own renames so a player who
+  // shows up here under an old name is credited to the same person the
+  // cross-tournament views (and the Set Ranks) use. Match-level renames still
+  // win — see withAliases.
+  const renames = withAliases(match.renames, await listPlayerAliases());
 
   const date = new Date(match.createdAt).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -92,7 +97,7 @@ export default async function MatchPage({
   let guessStats: GuessRateStats | null = null;
   let guessError: unknown = null;
   try {
-    guessStats = computeGuessRateStats({ ...scopedMatch, renames: match.renames });
+    guessStats = computeGuessRateStats({ ...scopedMatch, renames });
   } catch (err) {
     guessError = err;
   }
@@ -101,7 +106,7 @@ export default async function MatchPage({
   let matchStatsError: unknown = null;
   if (isNgmc) {
     try {
-      matchStats = computeMatchStats({ ...scopedMatch, renames: match.renames });
+      matchStats = computeMatchStats({ ...scopedMatch, renames });
     } catch (err) {
       matchStatsError = err;
     }
@@ -138,7 +143,26 @@ export default async function MatchPage({
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">Bracket</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">Bracket</h2>
+          {/* The scope is picked on the bracket itself (each round heading owns
+              its own chip), so all that's left up here is the summary of it and
+              the way back out. */}
+          {!isFullScope(scope) && (
+            <div className="flex items-center gap-2 text-xs text-textDim">
+              <span>
+                {scopedFiles.length} game{scopedFiles.length !== 1 ? 's' : ''} in scope
+              </span>
+              <Link
+                href={`/matches/${match.id}`}
+                scroll={false}
+                className="text-textMuted hover:text-text"
+              >
+                Reset to all stats
+              </Link>
+            </div>
+          )}
+        </div>
         <RoundRobinGrid
           teams={match.teams}
           files={bracketFiles}
@@ -167,18 +191,9 @@ export default async function MatchPage({
       </section>
 
       <section className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">
-            Stats{scopedLabel ? ` · ${scopedLabel}` : ''}
-          </h2>
-          <MatchStatsScope
-            matchId={match.id}
-            teams={match.teams}
-            files={bracketFiles}
-            scope={scope}
-            scopedGameCount={scopedFiles.length}
-          />
-        </div>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">
+          Stats{scopedLabel ? ` · ${scopedLabel}` : ''}
+        </h2>
 
         {guessError ? (
           <ErrorBox label="Guess Rate stats" err={guessError} />

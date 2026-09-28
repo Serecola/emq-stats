@@ -8,6 +8,7 @@ import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, type PlayerRankRow } from './player-ranks';
+import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
 import { norm } from './stats';
 import type {
   Match,
@@ -345,6 +346,7 @@ export async function listExpectedRanks(): Promise<SetRanks> {
   await ensureSchema();
   return cached('expected-ranks', async () => {
     const allMatches = await listMatches();
+    const aliases = await listPlayerAliases();
     const ranks: SetRanks = {};
 
     for (const mode of MODES) {
@@ -354,7 +356,7 @@ export async function listExpectedRanks(): Promise<SetRanks> {
           (m) => m.mode === mode && m.submode === submode
         );
         const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
-        const expected = expectedRanksFor(submodeMatches, gamemodeMatches, mode, submode);
+        const expected = expectedRanksFor(submodeMatches, gamemodeMatches, mode, submode, aliases);
         if (expected) {
           ranks[mode][submode] = expected;
         }
@@ -376,6 +378,7 @@ export async function listRecentExpectedRanks(): Promise<SetRanks> {
   await ensureSchema();
   return cached('recent-expected-ranks', async () => {
     const allMatches = await listMatches();
+    const aliases = await listPlayerAliases();
     const ranks: SetRanks = {};
 
     for (const mode of MODES) {
@@ -385,7 +388,7 @@ export async function listRecentExpectedRanks(): Promise<SetRanks> {
           (m) => m.mode === mode && m.submode === submode
         );
         const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
-        const expected = recentExpectedRanksFor(submodeMatches, gamemodeMatches, mode);
+        const expected = recentExpectedRanksFor(submodeMatches, gamemodeMatches, mode, 5, aliases);
         if (expected) {
           ranks[mode][submode] = expected;
         }
@@ -407,7 +410,7 @@ export async function listPlayerStats(filter: MatchFilter): Promise<PlayerSummar
   await ensureSchema();
   return cached(`player-stats:${filter.mode}:${filter.submode}`, async () => {
     const matches = applyMatchFilter(await listMatches(), filter);
-    return computeAllPlayerStats(matches);
+    return computeAllPlayerStats(matches, await listPlayerAliases());
   });
 }
 
@@ -421,7 +424,10 @@ export async function findPlayerStats(
   filter: MatchFilter = ALL_MATCH_FILTER
 ): Promise<PlayerSummary | null> {
   const summaries = await listPlayerStats(filter);
-  return summaries.find((p) => norm(p.uname) === norm(uname)) ?? null;
+  // Resolve the alias before matching, so a page opened under an old username
+  // lands on the merged player rather than reporting "never played".
+  const key = resolveAliasKey(uname, await listPlayerAliases());
+  return summaries.find((p) => norm(p.uname) === key) ?? null;
 }
 
 /**
@@ -441,7 +447,14 @@ export async function listPlayerRankRows(
     // played can still be ranked ahead of its first tournament.
     const gamemodeMatches = applyMatchFilter(allMatches, { mode, submode: 'all' });
     const setRanks = await listSetRanks();
-    return computePlayerRankRows(matches, gamemodeMatches, setRanks, mode, submode);
+    return computePlayerRankRows(
+      matches,
+      gamemodeMatches,
+      setRanks,
+      mode,
+      submode,
+      await listPlayerAliases()
+    );
   });
 }
 
@@ -478,9 +491,93 @@ export async function setPlayerSetRank(
 }
 
 /**
- * Every admin-assigned Player/Bot tag, keyed by normalized username — the
- * same identity stats and Set Ranks use. Usernames without a row are simply
- * absent (untagged); callers treat a missing key as "no tag".
+ * Every global alias, as normalized alias -> canonical display name. Fed to
+ * computeAllPlayerStats so the aliased names aggregate onto one player
+ * everywhere (see lib/player-aliases.ts). Cached like the other derived reads;
+ * every write below bumps the data version, so a change shows up immediately.
+ */
+export async function listPlayerAliases(): Promise<PlayerAliases> {
+  await ensureSchema();
+  return cached('player-aliases', async () => {
+    const res = await getDb().execute('SELECT alias_key, display_name FROM player_aliases');
+    const aliases: PlayerAliases = {};
+    for (const row of res.rows as any[]) {
+      const display = String(row.display_name);
+      if (!display) continue;
+      aliases[String(row.alias_key)] = display;
+    }
+    // Chained aliases are flattened once here, so every consumer sees a flat
+    // map and the chain is walked at most once per request, not once per name.
+    return canonicalAliases(aliases);
+  });
+}
+
+/**
+ * Points one username at another as "the same person", or with
+ * `targetKey === null` removes that claim.
+ *
+ * This is a real identity merge, so it also carries the per-username data
+ * that lives outside the recomputed-from-JSON stats: the alias's Set Ranks
+ * move onto the canonical player, as does its bot/override row. Where the
+ * canonical player already has its own value for a given mode + sub-mode, that
+ * existing value wins and the alias's is dropped — the canonical name is the
+ * one being kept, so its explicit choices shouldn't be overwritten by a name
+ * that's about to stop existing.
+ *
+ * Removing an alias only stops the merging. Anything already migrated stays on
+ * the canonical player rather than being handed back, since which name a past
+ * rank was typed under isn't recoverable afterwards.
+ */
+export async function setPlayerAlias(
+  aliasKey: string,
+  targetKey: string | null,
+  targetDisplay: string | null
+): Promise<void> {
+  await ensureSchema();
+  const db = getDb();
+  if (targetKey === null) {
+    await db.execute({ sql: 'DELETE FROM player_aliases WHERE alias_key = ?', args: [aliasKey] });
+    await markDataChanged();
+    return;
+  }
+  if (targetDisplay === null) throw new Error('A target name is required.');
+
+  await db.execute({
+    sql: `INSERT INTO player_aliases (alias_key, display_name, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(alias_key) DO UPDATE SET
+            display_name = excluded.display_name,
+            updated_at = excluded.updated_at`,
+    args: [aliasKey, targetDisplay, new Date().toISOString()],
+  });
+
+  // Move Set Ranks across, per mode + sub-mode. UPDATE OR IGNORE skips the
+  // (mode, submode) pairs the canonical player is already ranked in — the
+  // primary key rejects them — and the DELETE then clears whatever is left
+  // under the old name.
+  await db.batch([
+    {
+      sql: 'UPDATE OR IGNORE player_set_ranks SET player_key = ? WHERE player_key = ?',
+      args: [targetKey, aliasKey],
+    },
+    { sql: 'DELETE FROM player_set_ranks WHERE player_key = ?', args: [aliasKey] },
+    // Same rule for the bot/override row: the canonical player's own decision
+    // wins, the alias's only fills a gap.
+    {
+      sql: 'UPDATE OR IGNORE player_tags SET player_key = ? WHERE player_key = ?',
+      args: [targetKey, aliasKey],
+    },
+    { sql: 'DELETE FROM player_tags WHERE player_key = ?', args: [aliasKey] },
+  ]);
+  await markDataChanged();
+}
+
+/**
+ * Every stored username->tag decision, keyed by normalized username — the
+ * same identity stats and Set Ranks use. These are *overrides*, not a full
+ * tag list: most usernames have no row because the automatic name rule in
+ * lib/player-tags.ts already answers for them, and callers must go through
+ * `resolvePlayerTag` rather than reading this map directly.
  *
  * Cached for the life of the data version like the other derived reads: the
  * table is tiny, but the Player Manager and the public badge lookups hit it
@@ -493,9 +590,9 @@ export async function listPlayerTags(): Promise<Record<string, PlayerTag>> {
     const tags: Record<string, PlayerTag> = {};
     for (const row of res.rows as any[]) {
       const tag = String(row.tag);
-      // Only the two known values are ever written (the API validates), but
-      // a hand-edited row shouldn't surface as a badge with garbage text.
-      if (tag !== 'Player' && tag !== 'Bot') continue;
+      // Only these two are ever written (the API validates), but a
+      // hand-edited row shouldn't surface as a badge with garbage text.
+      if (tag !== 'Bot' && tag !== 'NotBot') continue;
       tags[String(row.player_key)] = tag;
     }
     return tags;
@@ -503,9 +600,10 @@ export async function listPlayerTags(): Promise<Record<string, PlayerTag>> {
 }
 
 /**
- * Sets (or, with `tag === null`, clears) one username's global Player/Bot
- * tag. One row per username — no mode/sub-mode dimension — so tagging a
- * name anywhere tags it everywhere.
+ * Records (or, with `tag === null`, forgets) one username's decision. One row
+ * per username — no mode/sub-mode dimension — so tagging a name anywhere tags
+ * it everywhere. `null` removes the override, putting the name back under the
+ * automatic rule.
  */
 export async function setPlayerTag(
   playerKey: string,

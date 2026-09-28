@@ -1,13 +1,16 @@
 /**
- * Round + game selector for a tournament's computed views: a "Scope" popup
- * (see MatchStatsScope) lists the whole Stats slice's Round 1..6 checkboxes —
- * Round 1..5 for 6-team tournaments — and each bracket card below carries a
- * "Game" chip toggling that game in the stats scope, so several games (say
- * Round 5 Game 1 together with Round 6 Game 1) can be scoped at once.
- * Everything below is link-driven
- * (plain navigations to `?rounds=` / `?games=` URLs with `scroll={false}`, so
- * changing the selection keeps your place in the page), so the selection is
- * bookmarkable and needs no client state of its own.
+ * The bracket for a tournament's computed views, and where its stats scope is
+ * picked: every round heading carries a "Scope round" chip and every card a
+ * "Game" chip, so the selector sits on the thing it selects rather than in a
+ * popup above the tables. Checking a round autoselects every game in it —
+ * the chips underneath light up with it — and unchecking a single game then
+ * narrows the scope to the rest, so any combination (Round 5 Game 1 together
+ * with Round 6 Game 1, say) is still reachable.
+ *
+ * Everything here is link-driven (plain navigations to `?rounds=` / `?games=`
+ * URLs with `scroll={false}`, so changing the selection keeps your place in
+ * the page), so the selection is bookmarkable and needs no client state of
+ * its own.
  *
  * Scoped-down stats recompute server-side from the raw files (the raw ~2 MB
  * of JSON is never serialized into this client component), so the browser
@@ -20,10 +23,10 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
   generateRoundRobin,
+  scopeQuery,
   type BracketFileSummary,
   type StatsScope,
 } from '@/lib/schedule';
-import { scopeQuery } from '@/components/MatchStatsScope';
 import BracketTeamRow from '@/components/BracketTeamRow';
 import type { BracketMatchup } from '@/lib/schedule';
 import type { Team } from '@/lib/types';
@@ -60,7 +63,7 @@ export default function RoundRobinGrid({
 }: {
   teams: Team[];
   files: Record<string, BracketFileSummary>;
-  // The stats scope shown as picked in the game chips; null hides the chips
+  // The stats scope as picked in the round and game chips; null hides both
   // entirely (the admin form's bracket, which picks files, not stats slices).
   // Chips link to `matchPath` with the sliced query string, so picking one is
   // a plain navigation — no client state to keep in sync with the tables.
@@ -68,7 +71,6 @@ export default function RoundRobinGrid({
   matchPath?: string;
 }) {
   const rounds = generateRoundRobin(teams);
-  if (rounds.length === 0) return null;
 
   // Team index whose cells are highlighted right now, or null when the pointer
   // is off the bracket entirely. Cleared on the wrapper's mouseleave rather than
@@ -76,72 +78,125 @@ export default function RoundRobinGrid({
   // cells of the same team — never blinks the highlight off in between.
   const [hoveredTeam, setHoveredTeam] = useState<number | null>(null);
 
-  // A game chip only means something while its round isn't already keeping
-  // everything: with no rounds checked the chips toggle individual games in
-  // and out of the selection (any number can be picked), and a checked
-  // round's chips render disabled — its games are already covered.
-  const activeGames = useMemo(() => {
-    if (!scope) return new Set<string>();
-    if (scope.rounds.length > 0) return new Set<string>();
-    return new Set(scope.games);
-  }, [scope]);
-
-  function gameHref(slot: string, displayRound: number): string {
-    if (!scope || !matchPath) return matchPath ?? '';
-    // Chips toggle games in and out of a game-only scope: an unchecked chip
-    // adds its game to the ones already picked (any number can be checked —
-    // Round 5 Game 1 together with Round 6 Game 1, say), a checked chip takes
-    // it back out, and dropping the last one falls back to all stats. A chip
-    // on a checked round isn't a toggle — those games are already kept — so
-    // it points at the plain round view instead (it renders disabled anyway).
-    let next: StatsScope;
-    if (scope.rounds.includes(displayRound)) {
-      next = { rounds: [displayRound], games: [] };
-    } else if (scope.games.includes(slot)) {
-      next = { rounds: [], games: scope.games.filter((s) => s !== slot) };
-    } else {
-      next = { rounds: [], games: [...scope.games, slot] };
+  // Rounds with at least one attached file. Scoping to a round with nothing in
+  // it would slice the tables down to nothing, which is never what the chip
+  // means, so those render disabled — the rule the Scope popup used to apply.
+  const playableRounds = useMemo(() => {
+    const withFiles = new Set<number>();
+    for (const round of rounds) {
+      if (round.matchups.some((m) => files[m.slot])) withFiles.add(round.displayRound);
     }
-    return `${matchPath}${scopeQuery(next)}`;
+    return withFiles;
+  }, [rounds, files]);
+
+  // The games currently in scope. A checked round autoselects every game in
+  // it, so its cards light up together with the round instead of going dead —
+  // which is what makes "check the round, then drop the one game I don't
+  // want" a two-click operation.
+  const activeGames = useMemo(() => {
+    const active = new Set<string>();
+    if (!scope) return active;
+    for (const round of rounds) {
+      if (scope.rounds.includes(round.displayRound)) {
+        for (const m of round.matchups) active.add(m.slot);
+      }
+    }
+    for (const slot of scope.games) active.add(slot);
+    return active;
+  }, [scope, rounds]);
+
+  if (rounds.length === 0) return null;
+
+  // Every control is a plain link to the scope it produces, so the selection
+  // stays bookmarkable and needs no client state of its own.
+  function hrefFor(next: StatsScope): string {
+    return `${matchPath ?? ''}${scopeQuery(next)}`;
+  }
+
+  function gameHref(slot: string): string {
+    if (!scope) return matchPath ?? '';
+    if (activeGames.has(slot)) {
+      // Dropping a game out of a checked round can't stay a round selection,
+      // so the scope becomes the explicit list of the games still in it;
+      // dropping the last one falls back to all stats.
+      return hrefFor({ rounds: [], games: [...activeGames].filter((s) => s !== slot) });
+    }
+    return hrefFor({ rounds: [], games: [...scope.games, slot] });
+  }
+
+  // Checking a round takes its games along, so any game picks are dropped —
+  // and come back if the last checked round is unchecked again. Rounds and
+  // game picks never mix (see scopeQuery).
+  function roundHref(displayRound: number): string {
+    if (!scope) return matchPath ?? '';
+    const next = scope.rounds.includes(displayRound)
+      ? scope.rounds.filter((r) => r !== displayRound)
+      : [...scope.rounds, displayRound].sort((a, b) => a - b);
+    return hrefFor({ rounds: next, games: next.length > 0 ? [] : scope.games });
   }
 
   return (
     <div className="space-y-3" onMouseLeave={() => setHoveredTeam(null)}>
-      {rounds.map((round) => (
-        <div key={round.displayRound}>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-textMuted">
-            Round {round.displayRound}
-          </h3>
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {round.matchups.map((m, i) => (
-              <MatchupCard
-                key={m.slot}
-                matchup={m}
-                gameNumber={i + 1}
-                teamA={teams[m.teamAIndex]}
-                teamB={teams[m.teamBIndex]}
-                file={files[m.slot]}
-                hoveredTeam={hoveredTeam}
-                onHoverTeam={setHoveredTeam}
-                gameSelected={scope !== null && activeGames.has(m.slot)}
-                gameTitle={
-                  scope !== null && activeGames.has(m.slot)
-                    ? 'Remove this game from the stats scope'
-                    : scope !== null && scope.games.length > 0
-                      ? 'Add this game to the stats scope'
-                      : 'Scope stats to this game'
-                }
-                gameDisabled={
-                  scope === null ||
-                  !matchPath ||
-                  (scope.rounds.length > 0 && scope.rounds.includes(m.displayRound))
-                }
-                gameHref={gameHref(m.slot, m.displayRound)}
-              />
-            ))}
+      {rounds.map((round) => {
+        const roundSelected = scope !== null && scope.rounds.includes(round.displayRound);
+        const playable = playableRounds.has(round.displayRound);
+        return (
+          <div key={round.displayRound}>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-textMuted">
+                Round {round.displayRound}
+              </h3>
+              {/* Round-level scope, sitting on the round it scopes — the
+                  tables below are sliced by whatever is lit here. */}
+              {scope !== null && matchPath && (
+                <Link
+                  href={roundHref(round.displayRound)}
+                  scroll={false}
+                  aria-disabled={!playable}
+                  title={
+                    !playable
+                      ? 'No games attached in this round yet'
+                      : roundSelected
+                        ? 'Remove this round from the stats scope'
+                        : 'Scope the stats tables to this round'
+                  }
+                  className={`rounded-full px-2 py-0.5 text-[0.6rem] font-medium transition-colors ${
+                    !playable
+                      ? 'pointer-events-none border border-border text-textDim opacity-50'
+                      : roundSelected
+                        ? 'bg-accent text-bg'
+                        : 'border border-border text-textMuted hover:border-textSub hover:text-text'
+                  }`}
+                >
+                  {roundSelected ? '✓ Selected' : 'Select Round'}
+                </Link>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {round.matchups.map((m, i) => (
+                <MatchupCard
+                  key={m.slot}
+                  matchup={m}
+                  gameNumber={i + 1}
+                  teamA={teams[m.teamAIndex]}
+                  teamB={teams[m.teamBIndex]}
+                  file={files[m.slot]}
+                  hoveredTeam={hoveredTeam}
+                  onHoverTeam={setHoveredTeam}
+                  gameSelected={scope !== null && activeGames.has(m.slot)}
+                  gameTitle={
+                    scope !== null && activeGames.has(m.slot)
+                      ? 'Remove this game from the stats scope'
+                      : 'Add this game to the stats scope'
+                  }
+                  gameDisabled={scope === null || !matchPath}
+                  gameHref={gameHref(m.slot)}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

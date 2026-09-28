@@ -40,6 +40,7 @@ export interface ErumodeGuessRow {
   perType: Record<string, number>; // answer type -> guess rate %, active types only
   rigGr: number;
   rigCount: number;
+  offlistGr: number; // % correct among guesses NOT on their pre-made list
   songs: number;
   games: number;
   performance: number;
@@ -263,12 +264,22 @@ export function computeGuessRateStats(
       const idx = ANSWER_TYPES.indexOf(t);
       perType[t] = acc.songCount[3] ? (100 * acc.saCorrectCount[idx]) / acc.songCount[3] : 0;
     }
+    // Off-list guess rate — the NGMC column's definition applied to the
+    // self-answer branch: the hits that weren't on their pre-made list over
+    // the opportunities that weren't. Both sides carry the same
+    // `activeTypes.length` multiplicity (every song is asked once per active
+    // answer type), so it cancels and the result lands on the same 0-100 scale
+    // as Guess Rate and Rig GR. Taken straight from the accumulators rather
+    // than back out of those two displayed percentages, which are rounded.
+    const offlistOpportunities = (acc.songCount[3] - acc.rigCount) * activeTypes.length;
+    const offlistCorrect = totalActiveCorrect - totalActiveRigHits;
     return {
       uname: acc.uname,
       guessRate,
       perType,
       rigGr,
       rigCount: acc.rigCount,
+      offlistGr: offlistOpportunities > 0 ? (100 * offlistCorrect) / offlistOpportunities : 0,
       songs: acc.songCount[3],
       games: acc.gameFiles.size,
       performance: computePerformance(

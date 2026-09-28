@@ -1,6 +1,7 @@
 import { norm } from './stats';
 import { computeMatchStats } from './stats';
 import { computeGuessRateStats } from './guess-stats';
+import { resolveAliasKey, withAliases, type PlayerAliases } from './player-aliases';
 import type { Match } from './types';
 
 export interface PlayerMatchEntry {
@@ -84,11 +85,19 @@ function emptyErumode(): ErumodeAggregate {
  * comparable — Erumode's guess rate is per answer-type, NGMC's is a single
  * correct/incorrect per song, and only NGMC has attacks/blocks at all). A
  * "player" is identified by normalized username *within* each match (after
- * that match's own renames are applied) — the same real person using a
- * differently-spelled name in an unrelated match shows up as a separate
- * entry, since there's no cross-match identity linking.
+ * that match's own renames are applied), then folded onto the canonical
+ * identity by the global `aliases` — so the same real person using a
+ * differently-spelled name in an unrelated tournament aggregates as one
+ * player, which is what makes an alias a true cross-match identity link.
+ *
+ * Aliases ride the same name-resolution path the per-match renames already
+ * use, so nothing downstream (Expected Ranks, autodraft, the player pages)
+ * needs to know they exist.
  */
-export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
+export function computeAllPlayerStats(
+  matches: Match[],
+  aliases: PlayerAliases = {}
+): PlayerSummary[] {
   const players: Record<string, PlayerSummary> = {};
   // Weighted-average accumulators for Erumode guess rate, per player key.
   const erumodeOpportunities: Record<string, number> = {};
@@ -111,14 +120,16 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
   };
 
   for (const match of matches) {
-    const guessStats = computeGuessRateStats(match);
+    // Global aliases first, this match's own renames on top — see withAliases.
+    const renames = withAliases(match.renames, aliases);
+    const guessStats = computeGuessRateStats({ ...match, renames });
     const isErumode = guessStats.mode === 'Erumode';
     const answerTypeCount = guessStats.activeTypes.length;
 
     // Attacks/blocks, keyed by normalized username, only for NGMC matches.
     const attackMap = new Map<string, { taken: number; effTaken: number; blocked: number; effBlocked: number }>();
     if (!isErumode) {
-      const matchStats = computeMatchStats(match);
+      const matchStats = computeMatchStats({ ...match, renames });
       for (const team of matchStats.teams) {
         for (const m of team.members) {
           attackMap.set(norm(m.uname), {
@@ -209,7 +220,14 @@ export function computeAllPlayerStats(matches: Match[]): PlayerSummary[] {
   return summaries;
 }
 
-export function findPlayerSummary(matches: Match[], uname: string): PlayerSummary | null {
-  const all = computeAllPlayerStats(matches);
-  return all.find((p) => norm(p.uname) === norm(uname)) ?? null;
+export function findPlayerSummary(
+  matches: Match[],
+  uname: string,
+  aliases: PlayerAliases = {}
+): PlayerSummary | null {
+  const all = computeAllPlayerStats(matches, aliases);
+  // Looked up by the name's canonical key, so a page reached through an alias
+  // (an old username, a shared link) lands on the merged player instead of 404.
+  const key = resolveAliasKey(uname, aliases);
+  return all.find((p) => norm(p.uname) === key) ?? null;
 }

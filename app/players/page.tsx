@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { listMatchSummaries, listPlayerStats, listPlayerTags } from '@/lib/store';
-import { norm } from '@/lib/stats';
 import ModeToggle from '@/components/ModeToggle';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import {
@@ -93,7 +92,7 @@ export default async function PlayersPage({
                     >
                       {p.uname}
                     </Link>
-                    <PlayerTagBadge tag={tags[norm(p.uname)]} className="ml-1.5" />
+                    <PlayerTagBadge uname={p.uname} overrides={tags} className="ml-1.5" />
                   </td>
                   <td className="px-3 py-2 text-right text-textMuted">{p.matchesPlayed}</td>
                   <td className="px-3 py-2 text-right text-accent">
