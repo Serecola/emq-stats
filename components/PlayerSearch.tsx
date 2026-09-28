@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { MatchFilter } from '@/lib/match-filter';
 import { togglePlayer, type PlayerFilter } from '@/lib/tournament-search';
+import { withBasePath } from '@/lib/base-path';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -100,8 +101,15 @@ export default function PlayerSearch({
   return (
     <div className="space-y-2">
       {/* method="get" so the form still works with JS off: the server reads the
-          same q/add params out of the URL (see parsePlayerFilter). */}
-      <form onSubmit={submit} method="get" action={basePath} className="flex flex-wrap items-center gap-1.5">
+          same q/add params out of the URL (see parsePlayerFilter). The action
+          needs the basePath added by hand — a native form submit is a plain
+          browser navigation, so unlike router.push() it gets no prefix. */}
+      <form
+        onSubmit={submit}
+        method="get"
+        action={withBasePath(basePath)}
+        className="flex flex-wrap items-center gap-1.5"
+      >
         <label htmlFor="player-search" className="sr-only">
           Search tournaments by player
         </label>

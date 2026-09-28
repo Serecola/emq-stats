@@ -20,7 +20,16 @@ export function middleware(req: NextRequest) {
   }
 
   if (isAdminPage) {
-    const loginUrl = new URL('/admin/login', req.url);
+    // Cloned from req.nextUrl rather than built with `new URL(path, req.url)`:
+    // NextURL puts the basePath back when it serializes, a plain URL doesn't.
+    // Without this the redirect points at `/admin/login` instead of
+    // `/emq-stats/admin/login`, which leaves the app's mount and 404s in nginx.
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = '/admin/login';
+    // Drop whatever the blocked request carried, keeping only `from` below.
+    loginUrl.search = '';
+    // `pathname` is basePath-stripped, which is what the login page's
+    // router.push() wants — it re-adds the prefix itself.
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }

@@ -54,6 +54,34 @@ Set both as environment variables on Vercel (Project Settings → Environment
 Variables) — no schema migration step needed, it's created automatically the
 first time the app queries the database.
 
+## The app is served under `/emq-stats`
+
+`next.config.mjs` sets `basePath: '/emq-stats'`, because the app shares a host
+with another site. Every route therefore lives under that prefix in production:
+
+| Route                        | Production URL                              |
+| ---------------------------- | ------------------------------------------- |
+| Viewer                       | `https://serecola.com/emq-stats`            |
+| Admin                        | `https://serecola.com/emq-stats/admin`      |
+| Admin login                  | `https://serecola.com/emq-stats/admin/login`|
+
+Hitting the domain root (`https://serecola.com/admin/...`) returns nginx's
+**404 Not Found** — there is no route there, so the request never reaches the
+app.
+
+Next.js adds the prefix for you when you use `<Link href>` or
+`router.push()` / `router.replace()`. It does **not** for a URL you build by
+hand, so those need `withBasePath()` from `lib/base-path.ts`:
+
+- `fetch()` calls in client components (login, logout, the Player Manager
+  writes, match delete)
+- a native `<form action>` — a no-JS submit is a plain browser navigation
+- the login redirect in `middleware.ts` (built from `req.nextUrl.clone()`, which
+  re-adds the prefix on serialize)
+
+`next.config.mjs` exports the value as `NEXT_PUBLIC_BASE_PATH` so
+`lib/base-path.ts` reads it rather than repeating the string.
+
 ## Local development
 
 ```bash
@@ -62,7 +90,8 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:3000` for the viewer, `/admin` for the admin panel.
+The prefix applies here too, so visit `http://localhost:3000/emq-stats` for the
+viewer and `/emq-stats/admin` for the admin panel.
 
 ## Deploying to Vercel
 

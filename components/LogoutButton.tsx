@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { withBasePath } from '@/lib/base-path';
 
 /**
  * Signs the admin out and sends them back to the login screen.
@@ -14,7 +15,7 @@ export default function LogoutButton() {
   const router = useRouter();
 
   async function onLogout() {
-    await fetch('/api/admin/logout', { method: 'POST' });
+    await fetch(withBasePath('/api/admin/logout'), { method: 'POST' });
     router.push('/admin/login');
     router.refresh();
   }

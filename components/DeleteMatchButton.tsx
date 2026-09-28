@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { withBasePath } from '@/lib/base-path';
 
 /**
  * Deletes one tournament. Confirms first, naming the tournament: this is the
@@ -18,7 +19,7 @@ export default function DeleteMatchButton({ id, title }: { id: string; title: st
       return;
     }
     setBusy(true);
-    await fetch(`/api/matches/${id}`, { method: 'DELETE' });
+    await fetch(withBasePath(`/api/matches/${id}`), { method: 'DELETE' });
     setBusy(false);
     router.refresh();
   }

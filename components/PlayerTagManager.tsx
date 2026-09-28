@@ -6,6 +6,7 @@ import { norm } from '@/lib/stats';
 import { isAutoBot, resolvePlayerTag, type PlayerTagOverrides } from '@/lib/player-tags';
 import type { PlayerAliases } from '@/lib/player-aliases';
 import type { PlayerTag } from '@/lib/types';
+import { withBasePath } from '@/lib/base-path';
 
 type Filter = 'all' | 'bot' | 'human';
 type SaveStatus = 'saving' | 'saved' | 'error';
@@ -111,7 +112,7 @@ export default function PlayerTagManager({
     setStatuses((prev) => ({ ...prev, [key]: 'saving' }));
     setErrors((prev) => ({ ...prev, [key]: '' }));
     try {
-      const res = await fetch('/api/admin/player-tags', {
+      const res = await fetch(withBasePath('/api/admin/player-tags'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerKey: key, tag: next }),
@@ -147,7 +148,7 @@ export default function PlayerTagManager({
     setStatuses((prev) => ({ ...prev, [rowKey]: 'saving' }));
     setErrors((prev) => ({ ...prev, [rowKey]: '' }));
     try {
-      const res = await fetch('/api/admin/player-aliases', {
+      const res = await fetch(withBasePath('/api/admin/player-aliases'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alias, target }),
@@ -266,7 +267,7 @@ export default function PlayerTagManager({
     setStatuses((prev) => ({ ...prev, [rowKey]: 'saving' }));
     setErrors((prev) => ({ ...prev, [rowKey]: '' }));
     const put = (alias: string, target: string | null) =>
-      fetch('/api/admin/player-aliases', {
+      fetch(withBasePath('/api/admin/player-aliases'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alias, target }),

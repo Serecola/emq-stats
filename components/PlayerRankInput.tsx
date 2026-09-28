@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Mode, Submode } from '@/lib/types';
+import { withBasePath } from '@/lib/base-path';
 
 /**
  * Inline editor for one player's admin-assigned Set Rank in one gamemode +
@@ -53,7 +54,7 @@ export default function PlayerRankInput({
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch('/api/admin/player-ranks', {
+      const res = await fetch(withBasePath('/api/admin/player-ranks'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerKey, mode, submode, rank: next }),

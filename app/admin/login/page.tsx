@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { withBasePath } from '@/lib/base-path';
 
 export default function AdminLoginPage() {
   return (
@@ -22,7 +23,7 @@ function AdminLoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const res = await fetch('/api/admin/login', {
+    const res = await fetch(withBasePath('/api/admin/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),

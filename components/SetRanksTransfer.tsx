@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatRankList, parseRankList } from '@/lib/teams';
 import type { Mode, Submode } from '@/lib/types';
+import { withBasePath } from '@/lib/base-path';
 
 /**
  * Bulk transfer of one gamemode + sub-mode's Set Ranks, as a plain
@@ -99,7 +100,7 @@ export default function SetRanksTransfer({
       for (let i = 0; i < writes.length; i++) {
         setProgress({ done: i, total: writes.length });
         const { key, rank } = writes[i];
-        const res = await fetch('/api/admin/player-ranks', {
+        const res = await fetch(withBasePath('/api/admin/player-ranks'), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ playerKey: key, mode, submode, rank }),
