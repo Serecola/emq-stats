@@ -21,8 +21,8 @@ export default async function AdminPage({
   return (
     <div className="space-y-6">
       {/* The Tour Manager / Player Manager switcher lives in the header (see
-          components/SiteNav.tsx) once you're inside /admin, so this page no
-          longer repeats it — the log-out control moves into the title row. */}
+          components/SiteNav.tsx) once you're inside /admin, so this page doesn't
+          repeat it — the log-out control sits in the title row instead. */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">Tour Manager</h1>
         <div className="flex items-center gap-3">

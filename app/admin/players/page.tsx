@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import AdminNav from '@/components/AdminNav';
+import LogoutButton from '@/components/LogoutButton';
 import { resolvePlayerTag } from '@/lib/player-tags';
 import ModeToggle from '@/components/ModeToggle';
 import PlayerRankTable from '@/components/PlayerRankTable';
+import SetRanksTransfer from '@/components/SetRanksTransfer';
 import PlayerTagManager from '@/components/PlayerTagManager';
 import {
   listMatchSummaries,
@@ -10,7 +11,9 @@ import {
   listPlayerRankRows,
   listPlayerStats,
   listPlayerTags,
+  listSetRanks,
 } from '@/lib/store';
+import { savedRanksFor } from '@/lib/player-ranks';
 import {
   ALL_MATCH_FILTER,
   applyMatchFilter,
@@ -94,11 +97,12 @@ export default async function AdminPlayersPage({
 
     return (
       <div className="space-y-6">
-        <AdminNav active="players" />
-
-        <div>
-          <h1 className="text-lg font-semibold">Player Manager</h1>
-          <p className="text-xs text-textDim">{summary}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold">Player Manager</h1>
+            <p className="text-xs text-textDim">{summary}</p>
+          </div>
+          <LogoutButton />
         </div>
 
         {tabs}
@@ -143,26 +147,32 @@ export default async function AdminPlayersPage({
 
   // ---- Set Ranks tab ------------------------------------------------------
   const matches = applyMatchFilter(allMatches, filter);
-  // Everyone in this gamemode gets a row, so a sub-mode that has never been
-  // played can still be ranked ahead of its first tournament (see
-  // listPlayerRankRows, which also handles the gamemode-wide fallback).
+  // Only players who have actually played this gamemode + sub-mode get a row:
+  // a sibling sub-mode's results are a different game, so they never stand in
+  // for missing data here (see listPlayerRankRows).
   const rows = await listPlayerRankRows(mode, submode);
 
   const selection = `${mode} ${submode}`;
   const rankedCount = rows.filter((r) => r.setRank !== null).length;
-  const gamemodeOnlyCount = rows.filter((r) => r.basis === 'gamemode').length;
   const summary =
     `${rows.length} player${rows.length !== 1 ? 's' : ''} in ${matches.length} ${selection} ` +
-    `tournament${matches.length !== 1 ? 's' : ''} · ${rankedCount} with a Set Rank` +
-    (gamemodeOnlyCount > 0 ? ` · ${gamemodeOnlyCount} without ${submode} data yet` : '');
+    `tournament${matches.length !== 1 ? 's' : ''} · ${rankedCount} with a Set Rank`;
+
+  // The whole ladder for this mode + sub-mode (not just the rows above — a rank
+  // can exist for someone who hasn't played it yet), plus the proper casing
+  // each name is known by, so the export round-trips readably.
+  const ladder = savedRanksFor(await listSetRanks(), mode, submode) ?? {};
+  const displayNames: Record<string, string> = {};
+  for (const r of rows) displayNames[r.playerKey] = r.uname;
 
   return (
     <div className="space-y-6">
-      <AdminNav active="players" />
-
-      <div>
-        <h1 className="text-lg font-semibold">Player Manager</h1>
-        <p className="text-xs text-textDim">{summary}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">Player Manager</h1>
+          <p className="text-xs text-textDim">{summary}</p>
+        </div>
+        <LogoutButton />
       </div>
 
       {tabs}
@@ -174,11 +184,21 @@ export default async function AdminPlayersPage({
         includeAllSubmodes={false}
       />
 
+      {/* Above the table, and outside the empty-state branch on purpose:
+          importing a ladder is exactly how you fill in a sub-mode nobody has
+          played yet, so the control has to exist when there are no rows. */}
+      <SetRanksTransfer
+        mode={mode}
+        submode={submode}
+        ranks={ladder}
+        displayNames={displayNames}
+      />
+
       {rows.length === 0 ? (
         <p className="text-sm text-textMuted">
           {allMatches.length === 0
             ? 'No players yet.'
-            : `No one has played ${mode} yet.`}
+            : `No one has played ${selection} yet.`}
         </p>
       ) : (
         <>
@@ -192,7 +212,9 @@ export default async function AdminPlayersPage({
             Set Rank is manual and stored per gamemode + sub-mode — it is the rank
             autodraft balances with for a {selection} tournament. Expected Rank is the
             player&apos;s songs-weighted Performance across these {selection} tournaments;
-            Expectation compares the two (Expected Rank − Set Rank).
+            Expectation compares the two (Expected Rank − Set Rank). Only {selection} games
+            count towards either — another sub-mode is a different game, so its results are
+            never used as a stand-in.
           </p>
         </>
       )}

@@ -30,6 +30,10 @@ const chipClass = (isActive: boolean): string =>
  * Backed by `?mode=`/`?submode=` query params through plain <Link>s, so the
  * active filter is resolved server-side (via `searchParams`), is
  * bookmarkable/shareable, and works without any client JS.
+ *
+ * `extraQuery` is appended to every chip's href, so another filter living in
+ * the URL (the player search's `?with=`) survives a change of mode instead of
+ * being silently dropped. Pass '' for none.
  */
 export default function ModeToggle({
   active,
@@ -37,12 +41,14 @@ export default function ModeToggle({
   allLabel = 'All',
   includeAll = true,
   includeAllSubmodes = true,
+  extraQuery = '',
 }: {
   active: MatchFilter;
   basePath: string;
   allLabel?: string;
   includeAll?: boolean;
   includeAllSubmodes?: boolean;
+  extraQuery?: string;
 }) {
   const modes: { label: string; value: ModeFilter }[] = [
     ...(includeAll ? [{ label: allLabel, value: 'all' as ModeFilter }] : []),
@@ -58,23 +64,26 @@ export default function ModeToggle({
           ...submodeOptions(active.mode).map((sm) => ({ label: sm, value: sm })),
         ];
 
+  // `matchFilterQuery` returns '' or a '?a=b' string, so the player filter's
+  // own leading '?' has to become a '&' when both are present.
+  const href = (query: string): string =>
+    !extraQuery
+      ? `${basePath}${query}`
+      : `${basePath}${query ? `${query}&${extraQuery.slice(1)}` : `?${extraQuery.slice(1)}`}`;
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {modes.map((m) => {
           // When clicking a mode chip:
           // If includeAllSubmodes is false, default to the first submode of that mode.
-          const href =
+          const modeHref =
             !includeAllSubmodes && m.value !== 'all'
-              ? `${basePath}${matchFilterQuery({ mode: m.value, submode: submodeOptions(m.value)[0] })}`
-              : `${basePath}${matchFilterQuery({ mode: m.value, submode: 'all' })}`;
+              ? matchFilterQuery({ mode: m.value, submode: submodeOptions(m.value)[0] })
+              : matchFilterQuery({ mode: m.value, submode: 'all' });
 
           return (
-            <Link
-              key={m.value}
-              href={href}
-              className={chipClass(m.value === active.mode)}
-            >
+            <Link key={m.value} href={href(modeHref)} className={chipClass(m.value === active.mode)}>
               {m.label}
             </Link>
           );
@@ -86,7 +95,7 @@ export default function ModeToggle({
           {submodes.map((sm) => (
             <Link
               key={sm.value}
-              href={`${basePath}${matchFilterQuery({ mode: active.mode, submode: sm.value })}`}
+              href={href(matchFilterQuery({ mode: active.mode, submode: sm.value }))}
               className={chipClass(sm.value === active.submode)}
             >
               {sm.label}

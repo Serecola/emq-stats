@@ -1,6 +1,20 @@
 const norm = (s: string) => s.toLowerCase().trim();
 
 /**
+ * Rounds a rank to a single decimal place, up or down to the nearest tenth.
+ *
+ * A rank is either admin-assigned (usually a whole number) or derived — the
+ * Expected Rank is a songs-weighted mean, so it arrives as a long float like
+ * 11.458333333333333. Derived ranks are rounded to a tenth before being
+ * balanced, drafted or written back into a roster: a tenth is finer than any
+ * balance decision, while the full float only adds noise to the team totals
+ * (summing tenths is still binary floats — 0.1 + 0.2 = 0.30000000000000004).
+ */
+export function roundToTenth(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
  * Parses a pasted team roster into an array of teams (each an array of
  * usernames, first = team label).
  *
@@ -125,6 +139,37 @@ export function parseRankList(text: string): {
 }
 
 /**
+ * The inverse of parseRankList: the Set Ranks as a `rank: name, name` table,
+ * one line per rank, strongest number first —
+ *
+ *     11: karira, patt
+ *     10: Shirosora, shiro206
+ *
+ * This is the same shape the autodrafter's pasted ranks table takes, so a
+ * ladder exported here can be edited and pasted straight back in. `displayNames`
+ * supplies each name's proper casing (Set Ranks are stored keyed by normalized
+ * username, so without it every export would come out lowercase); a name missing
+ * from it falls back to its own key. Names sharing a rank are sorted so the
+ * output is stable across exports.
+ */
+export function formatRankList(
+  ranks: Record<string, number>,
+  displayNames: Record<string, string> = {}
+): string {
+  const byRank = new Map<number, string[]>();
+  for (const [key, rank] of Object.entries(ranks)) {
+    const name = displayNames[key] ?? key;
+    const list = byRank.get(rank) ?? [];
+    list.push(name);
+    byRank.set(rank, list);
+  }
+  return [...byRank.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([rank, names]) => `${rank}: ${names.sort((a, b) => a.localeCompare(b)).join(', ')}`)
+    .join('\n');
+}
+
+/**
  * Inverse of parseTeamsBlob for prefilling the textarea when editing. When
  * ranks are available, reconstructs the rank-annotated format (with a
  * placeholder "= <sum>" boundary, which is discarded on re-parse anyway)
@@ -142,7 +187,10 @@ export function teamsToBlob(teams: string[][], ranks?: Record<string, number>): 
         const r = ranks![norm(name)];
         return r !== undefined ? `${name} (${r})` : name;
       });
-      const total = team.reduce((sum, name) => sum + (ranks![norm(name)] ?? 0), 0);
+      // Rounded for the same reason the drafter rounds derived ranks: summing
+      // tenths is still binary floats, and this total is the boundary marker
+      // the parser splits on (it carries no data of its own).
+      const total = roundToTenth(team.reduce((sum, name) => sum + (ranks![norm(name)] ?? 0), 0));
       return `${parts.join(' ')} = ${total}`;
     })
     .join('\n'); // Changed from ' ' to '\n' to put teams on separate lines

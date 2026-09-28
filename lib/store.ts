@@ -355,8 +355,7 @@ export async function listExpectedRanks(): Promise<SetRanks> {
         const submodeMatches = allMatches.filter(
           (m) => m.mode === mode && m.submode === submode
         );
-        const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
-        const expected = expectedRanksFor(submodeMatches, gamemodeMatches, mode, submode, aliases);
+        const expected = expectedRanksFor(submodeMatches, mode, aliases);
         if (expected) {
           ranks[mode][submode] = expected;
         }
@@ -387,8 +386,7 @@ export async function listRecentExpectedRanks(): Promise<SetRanks> {
         const submodeMatches = allMatches.filter(
           (m) => m.mode === mode && m.submode === submode
         );
-        const gamemodeMatches = allMatches.filter((m) => m.mode === mode);
-        const expected = recentExpectedRanksFor(submodeMatches, gamemodeMatches, mode, 5, aliases);
+        const expected = recentExpectedRanksFor(submodeMatches, mode, 5, aliases);
         if (expected) {
           ranks[mode][submode] = expected;
         }
@@ -432,8 +430,8 @@ export async function findPlayerStats(
 
 /**
  * The Player Manager's table for one gamemode + sub-mode. Cached per
- * combination because computing it walks the gamemode's matches twice (the
- * sub-mode slice, then the whole gamemode for the fallback rows).
+ * combination because computing it walks every one of that sub-mode's
+ * tournaments' raw JSON.
  */
 export async function listPlayerRankRows(
   mode: Mode,
@@ -442,14 +440,12 @@ export async function listPlayerRankRows(
   await ensureSchema();
   return cached(`player-ranks:${mode}:${submode}`, async () => {
     const allMatches = await listMatches();
+    // This sub-mode and nothing else — a sibling sub-mode's tournaments are a
+    // different game, so they never contribute figures here.
     const matches = applyMatchFilter(allMatches, { mode, submode });
-    // Everyone in the gamemode gets a row, so a sub-mode that has never been
-    // played can still be ranked ahead of its first tournament.
-    const gamemodeMatches = applyMatchFilter(allMatches, { mode, submode: 'all' });
     const setRanks = await listSetRanks();
     return computePlayerRankRows(
       matches,
-      gamemodeMatches,
       setRanks,
       mode,
       submode,

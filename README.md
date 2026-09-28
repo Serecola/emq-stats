@@ -73,6 +73,34 @@ Visit `http://localhost:3000` for the viewer, `/admin` for the admin panel.
 3. Deploy. `/admin` is gated by `middleware.ts` using the session cookie set
    at `/admin/login`.
 
+## Searching tournaments by player
+
+The tournament list (`/`) has a player search above the cards: type a name and
+choose **Include** or **Exclude** to keep only the tournaments that player was
+in, or to hide the ones they were. Both sides hold as many names as you like
+and combine, so "tournaments karira and patt both played, but not tom" is one
+filter. Applied names appear as chips you can remove individually or clear all
+at once.
+
+The state lives in the URL (`?with=karira&without=tom`), so a filtered list is
+bookmarkable and shareable, and it composes with the mode/sub-mode pills above
+it — switching gamemode keeps the player filter rather than dropping it. The
+form also works with JavaScript disabled: it submits `?q=&add=` to itself and
+the server applies that pending name (`parsePlayerFilter` in
+`lib/tournament-search.ts`).
+
+Names are matched through the same resolution the rest of the app uses — a
+match's own `renames` with the global aliases folded underneath — so filtering
+for someone also finds the tournaments where they were entered under an old
+name, rather than missing exactly the ones a rename was made to fix. The
+suggestions are the players in the tournament rosters, which is the same set
+the filter matches; each shows how many tournaments they were in.
+
+The roster is the source, not the uploaded files: it's what the summary read
+returns (no multi-megabyte payloads) and what an admin edits when fixing a
+tournament. A player who played but isn't in the pasted roster isn't matched
+here — the admin form surfaces those separately as unmatched names.
+
 ## Player Manager ranks
 
 `/admin/players` works inside one gamemode **and** sub-mode at a time (e.g.
@@ -89,10 +117,9 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
   of their per-tournament Performance rating (`lib/guess-stats.ts`) across the
   selected gamemode + sub-mode. It uses the same scale as the `(N)` ranks a
   roster is annotated with, which is what makes the two numbers comparable.
-  Anyone known in the gamemode gets a row even if they've never played that
-  sub-mode (flagged `mode` in the table's **Data** column), so a brand-new
-  sub-mode can be ranked before its first tournament — those rows take their
-  Expected Rank from the whole gamemode as the closest available baseline.
+  Only that one sub-mode's games count: a sibling sub-mode is a different game,
+  so its results are never substituted in as a baseline, and a player who hasn't
+  played this sub-mode simply has no row until they do.
 - **Expectation** — `Expected Rank − Set Rank`, scored with the thresholds in
   `lib/expectation.ts` and shared with the match Guess Rate table's Expectation
   column, so the two views can never disagree about a player. Players without a
@@ -149,7 +176,11 @@ of three rank sources, picked with the pills above the players box:
    their 5 most recent tournaments in that mode + sub-mode (songs-weighted
    mean of those tournaments' Performance — `recentExpectedRanksFor` in
    `lib/player-ranks.ts`), falling back to their Set Rank when they have no
-   games to compute one from.
+   games to compute one from. These are the only ranks the app derives rather
+   than the admin entering, so they're the only ones rounded — to a single
+   decimal place, up or down to the nearest tenth (`roundToTenth` in
+   `lib/teams.ts`) — before they're balanced, drafted and written back into the
+   Teams box. Ranks you assign or paste are used exactly as given.
 3. **Pasted table** — only a `rank: name, name` table pasted into the Ranks
    box (`11: karira, patt`), for one-off drafts outside the saved ladders.
 

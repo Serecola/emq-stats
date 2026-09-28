@@ -1,34 +1,78 @@
 import Link from 'next/link';
-import { listMatchSummaries } from '@/lib/store';
+import { listMatchSummaries, listPlayerAliases } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
+import PlayerSearch from '@/components/PlayerSearch';
 import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
+import {
+  applyPlayerFilter,
+  collectRosterNames,
+  isEmptyPlayerFilter,
+  parsePlayerFilter,
+  playerFilterQuery,
+} from '@/lib/tournament-search';
+import { canonicalAliases } from '@/lib/player-aliases';
+import { teamColor, teamColorBg } from '@/lib/team-colors';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * How strongly a team's chip is tinted with its own color behind the names.
+ * Kept as faint as the bracket's roster chips (BracketTeamRow) so the same
+ * roster reads the same strength in both places, and so the light team colors
+ * stay legible as text on the dark theme.
+ */
+const TEAM_CHIP_ALPHA = 0.18;
 
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { mode?: string; submode?: string };
+  searchParams: { mode?: string; submode?: string; with?: string; without?: string; q?: string; add?: string };
 }) {
   const filter = parseMatchFilter(searchParams);
+  const playerFilter = parsePlayerFilter(searchParams);
 
   const allMatches = await listMatchSummaries();
-  const matches = applyMatchFilter(allMatches, filter);
+  // Fold the global aliases in before anything reads a name, so a player
+  // entered under an old name in one tournament is the same filter as the name
+  // their other tournaments use (see lib/player-aliases.ts).
+  const aliases = canonicalAliases(await listPlayerAliases());
+  // Both filters compose: the mode picks the tournaments, the player picks
+  // which of those they were in.
+  const matches = applyPlayerFilter(applyMatchFilter(allMatches, filter), playerFilter, aliases);
   const [current, ...past] = matches;
   const filterLabel = matchFilterLabel(filter);
+  // Suggestions come from the roster of *all* tournaments, not the mode-
+  // filtered ones, so a player who only ever played NGMC can still be found
+  // while looking at Erumode.
+  const names = collectRosterNames(allMatches, aliases);
+  // Names the filter in the empty state, so "no tournaments" says which
+  // player emptied the list rather than just "no matching tournaments".
+  const playerFilterLabel = isEmptyPlayerFilter(playerFilter)
+    ? ''
+    : ` involving ${[
+        ...playerFilter.with.map((k) => names.get(k)?.name ?? k),
+        ...playerFilter.without.map((k) => `not ${names.get(k)?.name ?? k}`),
+      ].join(', ')}`;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1.5">
-        <ModeToggle active={filter} basePath="/" allLabel="All tours" />
+        <ModeToggle
+          active={filter}
+          basePath="/"
+          allLabel="All tours"
+          extraQuery={playerFilterQuery(playerFilter)}
+        />
       </div>
+
+      <PlayerSearch filter={playerFilter} names={names} />
 
       {!matches.length ? (
         <div className="rounded-lg border border-border bg-surface px-6 py-10 text-center">
           <p className="text-sm text-textMuted">
             {allMatches.length === 0
               ? 'No tournaments yet.'
-              : `No ${filterLabel || 'matching'} tournaments yet.`}
+              : `No ${filterLabel || 'matching'} tournaments${playerFilterLabel} yet.`}
           </p>
         </div>
       ) : (
@@ -59,7 +103,16 @@ function MatchCard({
   match,
   highlight,
 }: {
-  match: { id: string; title: string; createdAt: string; teams: string[][]; fileCount: number };
+  match: {
+    id: string;
+    title: string;
+    createdAt: string;
+    teams: string[][];
+    // Uploads stored against the tournament, which is also its games-played
+    // count — one export is one game. Labelled as games on the card; see the
+    // note where it's rendered.
+    fileCount: number;
+  };
   highlight?: boolean;
 }) {
   const date = new Date(match.createdAt).toLocaleDateString(undefined, {
@@ -78,9 +131,44 @@ function MatchCard({
         <span className="font-medium">{match.title}</span>
         <span className="text-xs text-textDim">{date}</span>
       </div>
-      <div className="mt-1 text-xs text-textMuted">
-        {match.teams.map((t) => t[0]).join(' vs ')} · {match.fileCount} file
-        {match.fileCount !== 1 ? 's' : ''}
+      {/* Every player, grouped into one chip per team in that team's own color.
+          The color is keyed by the team's position in `teams` (see
+          lib/team-colors.ts), the same key Results, the Guess Rate table and
+          the bracket use — so a player is this exact color here as on their
+          tournament page, rather than a second palette just for this list. */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
+        {match.teams.map((team, teamIndex) =>
+          // An empty team would render an empty chip — just the gap where one
+          // should be, which reads as a rendering bug.
+          team.length === 0 ? null : (
+            <span
+              key={teamIndex}
+              style={{ background: teamColorBg(teamIndex, TEAM_CHIP_ALPHA) }}
+              className="flex flex-wrap items-center gap-x-1.5 rounded px-1.5 py-0.5"
+            >
+              {team.map((name, i) => (
+                <span
+                  key={`${name}-${i}`}
+                  style={{ color: teamColor(teamIndex) }}
+                  className="whitespace-nowrap"
+                >
+                  {name}
+                </span>
+              ))}
+            </span>
+          )
+        )}
+        {/* Games played, not uploads: one uploaded export is one game between
+            two teams, which is how the rest of the app counts them (the match
+            page's scope summary says "N games in scope", and
+            `computeScheduleProgress` counts recorded games per pair). For a
+            legal 4- or 6-team roster the numbers coincide exactly — 4 teams is
+            a double round robin, so the 12 expected games and the 12 files
+            are the same 12 — so `fileCount` is already the game count, and
+            reading it as "12 files" only exposed the upload detail. */}
+        <span className="text-textDim">
+          · {match.fileCount} game{match.fileCount !== 1 ? 's' : ''}
+        </span>
       </div>
     </Link>
   );

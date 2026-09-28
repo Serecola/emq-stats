@@ -1,11 +1,31 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { parsePlayerList, parseRankList } from '@/lib/teams';
+import { parsePlayerList, parseRankList, roundToTenth } from '@/lib/teams';
 import { balanceTeams, mergeHiddenRanks, type DraftPlayer, type TeamDraft } from '@/lib/balance';
 import { VALID_TEAM_COUNTS } from '@/lib/schedule';
 
 const norm = (s: string) => s.toLowerCase().trim();
+
+/**
+ * `roundToTenth` over a whole rank table, keeping its normalized-name keys.
+ * Applied to the Expected table only — it's the one layer the app derives
+ * rather than the admin entering, so the only one worth rounding. Set Ranks
+ * and anything typed or pasted are the admin's own numbers and are used
+ * exactly as given, so the draft preview never disagrees with what's applied.
+ */
+const roundRanks = (ranks: Record<string, number>): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const [key, rank] of Object.entries(ranks)) out[key] = roundToTenth(rank);
+  return out;
+};
+
+/**
+ * A team total or spread for the draft preview. Sums of tenth-valued ranks are
+ * still binary floats (11.4 + 5.6 + 3.2), so the trailing noise is rounded off
+ * for display; a whole number still reads as a whole number.
+ */
+const fmt1 = (n: number) => String(roundToTenth(n));
 
 /**
  * Which table the autodraft balances with (the "rank source" pills):
@@ -87,21 +107,31 @@ export default function TeamDrafter({
     }
     return out;
   }, [manualRanks]);
+  // Which table leads and what fills a gap in it: the chosen source, plus Set
+  // Ranks as the fallback under an Expected-Ranks draft (the only source with
+  // one). The Expected table is rounded to a tenth here — the only layer the
+  // app derives rather than the admin entering, so the only one rounded.
+  const layers = useMemo(() => {
+    if (rankSource === 'set') return { primary: savedRanks, fallback: null };
+    if (rankSource === 'expected') {
+      const primary = expectedRanks ? roundRanks(expectedRanks) : null;
+      return { primary, fallback: savedRanks };
+    }
+    return { primary: null, fallback: null };
+  }, [rankSource, savedRanks, expectedRanks]);
+
   // Layering of the chosen source (see mergeHiddenRanks): typed ranks win
   // over everything, then the pasted Ranks box, then the source's own table
   // (Set Ranks, or Expected Ranks with Set Ranks as the fallback).
   const ranks = useMemo(() => {
-    const primary =
-      rankSource === 'set' ? savedRanks : rankSource === 'expected' ? expectedRanks : null;
-    const fallback = rankSource === 'expected' ? savedRanks : null;
-    const merged = mergeHiddenRanks(listed, rankList.ranks, primary, fallback);
+    const merged = mergeHiddenRanks(listed, rankList.ranks, layers.primary, layers.fallback);
     for (const player of listed) {
       const key = norm(player.name);
       const typed = typedRanks[key];
       if (typed !== undefined) merged[key] = typed;
     }
     return merged;
-  }, [listed, rankList, typedRanks, rankSource, savedRanks, expectedRanks]);
+  }, [listed, rankList, typedRanks, layers]);
 
   const { ranked, unranked, unsupported, counts } = useMemo(() => {
     const ranked: DraftPlayer[] = [];
@@ -112,9 +142,7 @@ export default function TeamDrafter({
     // Which merge layer each ranked player's rank came from (mirrors the
     // priority in `ranks` above), for the summary next to the player count.
     const counts = { pasted: 0, primary: 0, fallback: 0, typed: 0 };
-    const primary =
-      rankSource === 'set' ? savedRanks : rankSource === 'expected' ? expectedRanks : null;
-    const fallback = rankSource === 'expected' ? savedRanks : null;
+    const { primary, fallback } = layers;
     for (const player of listed) {
       const label = player.grade ? `${player.name} (${player.grade})` : player.name;
       // The Teams box is whitespace-delimited ("Name (rank) ..."), so a name
@@ -136,7 +164,7 @@ export default function TeamDrafter({
       else if (fallback && fallback[key] !== undefined) counts.fallback++;
     }
     return { ranked, unranked, unsupported, counts };
-  }, [listed, ranks, typedRanks, rankList, rankSource, savedRanks, expectedRanks]);
+  }, [listed, ranks, typedRanks, rankList, layers]);
 
   const summaryBits = useMemo(() => {
     const bits: string[] = [];
@@ -417,13 +445,13 @@ export default function TeamDrafter({
                   )}
                 </span>
                 <span className="text-[0.65rem] text-textDim">
-                  {draft.spread === 0 ? 'perfectly even' : `spread ${draft.spread}`}
+                  {fmt1(draft.spread) === '0' ? 'perfectly even' : `spread ${fmt1(draft.spread)}`}
                 </span>
               </span>
               {draft.teams.map((team, teamIndex) => (
                 <span key={teamIndex} className="mt-0.5 block font-mono text-xs text-textSub">
                   {team.map((player) => `${player.name} (${player.rank})`).join(' ')}{' '}
-                  <span className="text-textDim">= {draft.sums[teamIndex]}</span>
+                  <span className="text-textDim">= {fmt1(draft.sums[teamIndex])}</span>
                 </span>
               ))}
             </button>

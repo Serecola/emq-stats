@@ -10,6 +10,7 @@ import { savedRanksFor } from '@/lib/player-ranks';
 import TeamDrafter from '@/components/TeamDrafter';
 import BracketTeamRow from '@/components/BracketTeamRow';
 import DownloadFilesButton from '@/components/DownloadFilesButton';
+import ShareMatchLink from '@/components/ShareMatchLink';
 import {
   generateRoundRobin,
   matchFilesToBracket,
@@ -427,6 +428,11 @@ export default function MatchForm({
       onDragOver={blockFileDrop}
       onDrop={blockFileDrop}
     >
+      {/* Only a saved tournament has a player-view link — a new one has no id
+          to link to until it's created (and lands on this same Edit screen,
+          where the section then appears). */}
+      {existing && <ShareMatchLink matchId={existing.id} />}
+
       <div>
         <label className="mb-1 block text-xs font-medium text-textMuted">
           Tournament <span className="text-textDim">(date, region, mode, and sub-mode are mandatory)</span>

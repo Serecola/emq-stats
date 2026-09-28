@@ -7,6 +7,16 @@ html, body {
   color: #f2f2f3;
 }
 
+/* Anchor jumps (the match page's section rail) and "back to top" glide
+   instead of snapping. Scoped to no-preference so the reduced-motion setting
+   is honoured — and kept in CSS rather than passed per call site, so every
+   jump on the page moves the same way. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

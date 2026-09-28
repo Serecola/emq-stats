@@ -21,6 +21,8 @@ import GuessRateTable from '@/components/GuessRateTable';
 import ResultsSection from '@/components/ResultsSection';
 import MvpSection from '@/components/MvpSection';
 import RoundRobinGrid from '@/components/RoundRobinGrid';
+import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
+import BackToTop from '@/components/BackToTop';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,8 +134,22 @@ export default async function MatchPage({
     }
   }
 
+  // Jump targets for the left-hand rail (MatchSectionNav). Listed in the order
+  // they appear and gated on the same conditions that render each block, so a
+  // link never points at a section that isn't on the page — the NGMC-only
+  // Attacks & Blocks table is conditional. The MVP block sits inside Results
+  // and isn't listed: it's part of that section, not a destination of its own.
+  const jumpSections: JumpSection[] = [
+    { id: 'bracket', label: 'Bracket' },
+    { id: 'results', label: 'Results' },
+    { id: 'stats', label: 'Stats' },
+    ...(isNgmc && matchStats ? [{ id: 'attacks-blocks', label: 'Attacks & Blocks', nested: true }] : []),
+  ];
+
   return (
     <div className="space-y-8">
+      <MatchSectionNav sections={jumpSections} />
+      <BackToTop />
       <div>
         <Link href="/" className="text-xs text-textMuted hover:text-text">← All tournaments</Link>
         <h1 className="mt-2 text-lg font-semibold">{match.title}</h1>
@@ -142,7 +158,7 @@ export default async function MatchPage({
         </p>
       </div>
 
-      <section className="space-y-3">
+      <section id="bracket" className="space-y-3 scroll-mt-16">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">Bracket</h2>
           {/* The scope is picked on the bracket itself (each round heading owns
@@ -171,7 +187,7 @@ export default async function MatchPage({
         />
       </section>
 
-      <section className="space-y-3">
+      <section id="results" className="space-y-3 scroll-mt-16">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">
             Results{scopedLabel ? ` · ${scopedLabel}` : ''}
@@ -190,7 +206,7 @@ export default async function MatchPage({
         ) : null}
       </section>
 
-      <section className="space-y-5">
+      <section id="stats" className="space-y-5 scroll-mt-16">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-textSub">
           Stats{scopedLabel ? ` · ${scopedLabel}` : ''}
         </h2>
@@ -210,7 +226,7 @@ export default async function MatchPage({
           (matchStatsError ? (
             <ErrorBox label="Attacks & Blocks" err={matchStatsError} />
           ) : matchStats ? (
-            <div>
+            <div id="attacks-blocks" className="scroll-mt-16">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
                 Attacks &amp; Blocks
               </h3>

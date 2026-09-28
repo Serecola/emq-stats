@@ -27,11 +27,6 @@ export interface PlayerRankRow {
   // Expected Rank − Set Rank; null while no Set Rank exists to compare against.
   diff: number | null;
   expectation: ExpectationLabel | null;
-  // Which slice the stats/Expected Rank came from. 'submode' rows have played
-  // this exact gamemode + sub-mode; 'gamemode' rows haven't yet and fall back
-  // to their play across the whole gamemode, so a brand-new sub-mode can still
-  // be ranked before its first tournament (the table flags these rows).
-  basis: 'submode' | 'gamemode';
 }
 
 /**
@@ -39,16 +34,17 @@ export interface PlayerRankRow {
  * who have played it, their aggregated Performance as an Expected Rank, and
  * the admin's Set Rank for it with the resulting promotion verdict.
  *
- * Everyone who has played *anything* in this gamemode also gets a row, even
- * without a tournament in this sub-mode, so a new sub-mode's ladder can be
- * filled in before it's been played — those rows are marked `basis:
- * 'gamemode'` and take their Expected Rank from the whole gamemode as the
- * closest available baseline.
+ * The figures come *only* from tournaments in this exact gamemode + sub-mode.
+ * A player's play in a sibling sub-mode is a different game, and its
+ * Performance isn't on the same scale, so it is never substituted in as a
+ * baseline: someone who hasn't played this sub-mode simply has no row, and
+ * their Expected Rank waits until they do. Grading a draft against numbers
+ * from a neighbouring sub-mode would quietly mis-draft every team.
  *
- * `submodeMatches` must be mode+sub-mode filtered and `gamemodeMatches` mode
- * filtered (both via applyMatchFilter) — ranks, and therefore expectations,
- * are stored per sub-mode, so the submode rows are exactly what a tournament
- * with the same mode + sub-mode is graded against, and what autodraft uses.
+ * `submodeMatches` must be mode+sub-mode filtered (via applyMatchFilter) —
+ * ranks, and therefore expectations, are stored per sub-mode, so these rows
+ * are exactly what a tournament with the same mode + sub-mode is graded
+ * against, and what autodraft uses.
  *
  * Players with no Set Rank still get a row (they're the ones the admin most
  * needs to rank) but carry no diff/expectation, since there's nothing to
@@ -56,7 +52,6 @@ export interface PlayerRankRow {
  */
 export function computePlayerRankRows(
   submodeMatches: Match[],
-  gamemodeMatches: Match[],
   setRanks: SetRanks,
   mode: string,
   submode: string,
@@ -70,8 +65,7 @@ export function computePlayerRankRows(
 
   const addRow = (
     uname: string,
-    aggregate: { matchesPlayed: number; totalSongs: number; overallGuessRate: number; overallPerformance: number },
-    basis: 'submode' | 'gamemode'
+    aggregate: { matchesPlayed: number; totalSongs: number; overallGuessRate: number; overallPerformance: number }
   ) => {
     const playerKey = norm(uname);
     if (seen.has(playerKey)) return;
@@ -91,21 +85,14 @@ export function computePlayerRankRows(
       setRank,
       diff,
       expectation: diff === null ? null : expectationFromDiff(diff),
-      basis,
     });
   };
 
-  // Primary rows: played this exact gamemode + sub-mode.
+  // Everyone who has played this exact gamemode + sub-mode, and no one else.
   for (const p of computeAllPlayerStats(submodeMatches, aliases)) {
     const aggregate = isErumode ? p.erumode : p.ngmc;
     if (aggregate.matchesPlayed === 0) continue;
-    addRow(p.uname, aggregate, 'submode');
-  }
-  // Fallback rows: known in this gamemode, but not in this sub-mode yet.
-  for (const p of computeAllPlayerStats(gamemodeMatches, aliases)) {
-    const aggregate = isErumode ? p.erumode : p.ngmc;
-    if (aggregate.matchesPlayed === 0) continue;
-    addRow(p.uname, aggregate, 'gamemode');
+    addRow(p.uname, aggregate);
   }
 
   // Best current form first; unranked-but-comparable rows keep their
@@ -133,31 +120,28 @@ export function savedRanksFor(setRanks: SetRanks, mode: string, submode: string)
  * Expected Ranks for players in one gamemode + sub-mode as a normalized-name
  * -> rank map, for use as a fallback in autodraft when a player has no Set
  * Rank. Computed from the songs-weighted mean of each player's Performance
- * across tournaments in this gamemode + sub-mode (or the whole gamemode as a
- * baseline for players who haven't played this sub-mode yet).
+ * across tournaments in this gamemode + sub-mode.
+ *
+ * Scoped to that sub-mode and no wider: another sub-mode's games are a
+ * different game, so their Performance is never used as a stand-in for a
+ * sub-mode that has no tournaments yet.
  *
  * Returns null when there's no data to compute Expected Ranks from, so callers
  * can distinguish "no ranks assigned yet" from "no performance data available".
  */
 export function expectedRanksFor(
   submodeMatches: Match[],
-  gamemodeMatches: Match[],
   mode: string,
-  submode: string,
   aliases: PlayerAliases = {}
 ): Record<string, number> | null {
   const isErumode = mode === 'Erumode';
-  const allStats = computeAllPlayerStats(
-    submodeMatches.length ? submodeMatches : gamemodeMatches,
-    aliases
-  );
+  const allStats = computeAllPlayerStats(submodeMatches, aliases);
   if (!allStats.length) return null;
 
   const ranks: Record<string, number> = {};
   for (const p of allStats) {
     const aggregate = isErumode ? p.erumode : p.ngmc;
     if (aggregate.matchesPlayed === 0) continue;
-    // Use the submode aggregate when available, otherwise the gamemode aggregate.
     const expectedRank = aggregate.overallPerformance;
     if (expectedRank > 0) {
       // Keyed by the canonical name so autodraft balances a merged identity as
@@ -174,20 +158,18 @@ export function expectedRanksFor(
  * most recent tournaments — the autodrafter's "Expected (last 5)" source, so
  * a player's current run counts more than tournaments from a year ago.
  *
- * Same scale as Set Rank / roster `(N)` ranks, and same fallback shape as
- * `expectedRanksFor`: whole-gamemode matches are used when the sub-mode has
- * no tournaments yet, and null is returned when there's no data at all so
- * callers can fall back to Set Ranks.
+ * Same scale as Set Rank / roster `(N)` ranks, and scoped to the one sub-mode
+ * like `expectedRanksFor`: `submodeMatches` is the only input, so a sub-mode
+ * with no tournaments of its own yields null and the caller falls back to Set
+ * Ranks rather than borrowing a sibling sub-mode's numbers.
  */
 export function recentExpectedRanksFor(
   submodeMatches: Match[],
-  gamemodeMatches: Match[],
   mode: string,
   limit = 5,
   aliases: PlayerAliases = {}
 ): Record<string, number> | null {
-  const source = submodeMatches.length ? submodeMatches : gamemodeMatches;
-  const allStats = computeAllPlayerStats(source, aliases);
+  const allStats = computeAllPlayerStats(submodeMatches, aliases);
   if (!allStats.length) return null;
 
   const ranks: Record<string, number> = {};
@@ -195,7 +177,8 @@ export function recentExpectedRanksFor(
     // `entries` is one per tournament, most recent first (sorted in
     // computeAllPlayerStats), each carrying that tournament's Performance
     // and song count — enough to rebuild the songs-weighted mean over just
-    // the latest few.
+    // the latest few. The source slice is already this sub-mode only; the
+    // mode check just keeps the two halves of the aggregate apart.
     const recent = p.entries.filter((e) => e.mode === mode).slice(0, limit);
     let weighted = 0;
     let songs = 0;

@@ -20,11 +20,14 @@ interface Column {
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
 /**
- * The Player Manager table: one row per player in the selected gamemode +
- * sub-mode, with their stats, the Expected Rank their play implies, and an
- * editable Set Rank. Rows are sorted client-side like the match Guess Rate
- * table — `expectedRank` descending by default, which is the order the
- * ranking decisions are usually made in.
+ * The Player Manager table: one row per player who has played the selected
+ * gamemode + sub-mode, with their stats, the Expected Rank their play in *that
+ * sub-mode* implies, and an editable Set Rank. Rows are sorted client-side like
+ * the match Guess Rate table — `expectedRank` descending by default, which is
+ * the order the ranking decisions are usually made in.
+ *
+ * A player who has only ever played a sibling sub-mode has no row here at all:
+ * their figures would be on a different scale, so they are never mixed in.
  *
  * Set Rank is edited per row (PlayerRankInput) and scoped to this mode +
  * sub-mode, so the value stored here is exactly the one autodraft uses for a
@@ -61,23 +64,12 @@ export default function PlayerRankTable({
       ),
     },
     {
-      key: 'basis',
-      label: 'Data',
-      title: `Where the figures come from: rows flagged "mode" have no ${mode} ${submode} tournaments yet, so they use whole-gamemode results`,
-      accessor: (r) => r.basis,
-      render: (r) =>
-        r.basis === 'submode' ? (
-          <span className="text-textDim">—</span>
-        ) : (
-          <span
-            className="rounded-full border border-border bg-surfaceAlt px-2 py-0.5 text-[0.65rem] text-accent"
-            title={`No ${mode} ${submode} tournaments played yet — Expected Rank uses their ${mode} results overall`}
-          >
-            mode
-          </span>
-        ),
+      key: 'matchesPlayed',
+      label: 'Tours',
+      title: `Tournaments in ${mode} ${submode}`,
+      accessor: (r) => r.matchesPlayed,
+      render: (r) => r.matchesPlayed,
     },
-    { key: 'matchesPlayed', label: 'Tours', title: 'Tournaments matching this sub-mode — flagged rows have none yet, so their stats come from the whole gamemode', accessor: (r) => r.matchesPlayed, render: (r) => <span className={r.basis === 'gamemode' ? 'text-accent' : undefined}>{r.matchesPlayed}</span> },
     { key: 'songs', label: 'Songs', accessor: (r) => r.songs, render: (r) => r.songs },
     {
       key: 'guessRate',
@@ -88,7 +80,7 @@ export default function PlayerRankTable({
     {
       key: 'expectedRank',
       label: 'Expected Rank',
-      title: `Songs-weighted ${mode} ${submode} Performance across their tournaments (whole-gamemode figures for rows with no ${submode} data yet)`,
+      title: `Songs-weighted ${mode} ${submode} Performance across their tournaments`,
       className: 'border-l border-border',
       accessor: (r) => r.expectedRank,
       render: (r) => <span className="font-medium text-textSub">{r.expectedRank.toFixed(2)}</span>,

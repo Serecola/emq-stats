@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getMatch, listSetRanks, listRecentExpectedRanks } from '@/lib/store';
 import MatchForm from '@/components/MatchForm';
-import AdminNav from '@/components/AdminNav';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +14,6 @@ export default async function EditMatchPage({ params }: { params: { id: string }
 
   return (
     <div className="max-w-2xl space-y-4">
-      <AdminNav active="tours" />
       <h1 className="text-lg font-semibold">Edit tournament</h1>
       <MatchForm existing={match} savedRanks={savedRanks} expectedRanks={expectedRanks} />
     </div>
