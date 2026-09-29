@@ -161,6 +161,42 @@ returns (no multi-megabyte payloads) and what an admin edits when fixing a
 tournament. A player who played but isn't in the pasted roster isn't matched
 here — the admin form surfaces those separately as unmatched names.
 
+### Recent (5) vs All-Time
+
+Three views read a player's tournament history one of two ways, switched by the
+same slider (`components/StatsRangeToggle.tsx`) and carried in the URL as
+`?range=all`, so the choice is bookmarkable, shareable and survives the mode
+sub-mode, the sub-tab and the links between them:
+
+- **Recent (5)** — the default, and what a bare visit gets: only each player's
+  five most recent tournaments in the current gamemode + sub-mode.
+- **All-Time** — every tournament they played in that mode + sub-mode.
+
+| View | What the range covers |
+| --- | --- |
+| `/players/<name>` | The stat cards, the tournament history table and the count under the name, all from that one slice — so they can't disagree about which tournaments are in view. The count reads "last 5 of 12 tournaments" when the window trims anything. |
+| `/players` | Every per-player figure in the table — Tournaments, Winrate, Guess Rate, the Erumode split guess-rate columns and the Expected Rank / Expectation that follow them — joined from the same cached rows the admin view reads. Set Rank itself is never ranged. |
+| `/admin/players` → Set Ranks | The Expected Rank each row is graded on, and with it the played figures and the Expectation that follows. Set Rank itself is never ranged — it's the admin's, not a measurement. |
+
+The Player Tags tab has no switch: aliases and bot overrides are global per
+username rather than per tournament, so there is no history to slice.
+
+"Recent" is exactly what *tours they participated in* means here: a tournament
+they were uploaded in but didn't play a song in is in neither count, and a
+player with five tournaments or fewer is identical on both sides. The window
+also matches the Expected Rank source's (`recentExpectedRanksFor`), so the
+numbers on a Recent page and the rank the autodrafter balances with describe
+the same handful of tournaments.
+
+The slice is recomputed from the per-tournament rows (`slicePlayerSummary` in
+`lib/player-stats.ts`, reached from `computePlayerRankRows` for the ladder)
+rather than by re-running the whole aggregation over a trimmed match list: the
+slice follows the *player*, not their gamemode, so it spans their whole history,
+and narrowing the input by mode could cut a tournament out of the middle of it.
+A trimmed row keeps its all-time count beside the ranged one ("5 / 12") instead
+of quietly dropping the rest, and nothing is written either way — the switch
+changes what a view reads, never what's stored.
+
 ## Player Manager ranks
 
 `/admin/players` works inside one gamemode **and** sub-mode at a time (e.g.
@@ -173,6 +209,21 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
   `PUT /api/admin/player-ranks`) and stored in the `player_set_ranks` table,
   one row per player per mode *and* sub-mode, keyed by normalized username.
   Clearing the field removes the rank.
+- **Winrate** — how the games they actually played went: a win is worth 1 point,
+  a tie 0.5 and a loss nothing, over the games played, so 2 wins / 1 tie / 3
+  losses reads 41.7% (`winRatePct` in `lib/results.ts`). Counted per *game*
+  rather than per tournament and per *player* rather than per team
+  (`computePlayerGameRecords`), so a squad dropped out of the second half of a
+  bracket stops winning, and a team member who sat a game out is neither up nor
+  down for it. A game with no result — unscored, or a lone score that can't be
+  pinned to a fixture — counts for nobody, and a player with no counted game
+  shows `—` rather than a 0% that would read like a losing streak. The
+  "Recent (5)" switch applies to it like every other figure in the table.
+  Winrate and Guess Rate are shaded on the cell itself — a straight gradient from
+  red at 0% through yellow at 50% to green at 100% (`percentHeat` in
+  `lib/percent-heat.ts`, shared by this table and the `/players` list, which
+  walks the hue the long way round, red → yellow → green, so the middle of the
+  scale never goes muddy).
 - **Expected Rank** — what the player's results imply: the songs-weighted mean
   of their per-tournament Performance rating (`lib/guess-stats.ts`) across the
   selected gamemode + sub-mode. It uses the same scale as the `(N)` ranks a
@@ -184,6 +235,47 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
   `lib/expectation.ts` and shared with the match Guess Rate table's Expectation
   column, so the two views can never disagree about a player. Players without a
   Set Rank show `—` rather than a verdict.
+
+### The public players list
+
+`/players` shows the same ladder read-only: **Set Rank / Exp. Rank /
+Expectation** open the row, right behind the player's name, because they
+describe the player itself rather than the range on screen. All three are joined
+(by normalized username) straight from the cached `listPlayerRankRows` the admin
+table renders, so the public view and the Player Manager can never disagree
+about a player. Set Rank is displayed, not edited — the inline input stays
+admin-only — and a figure with nothing to compute shows `—` rather than a guess.
+Heading it **Exp. Rank** keeps the row narrow; the hover title still spells the
+figure out.
+
+Header labels are the short forms — **Tours / WR / GR / Comp** — for the same
+reason, and every one of them is a sort key (`SortableHeader` / `toggleSort` /
+`compareValues`, the machinery the admin tables use). Nothing is sorted until a
+header is clicked, so the list opens in the order the data arrives in, and a
+cell with no figure sorts last in *both* directions instead of taking a 0 it
+never earned.
+
+Erumode selections gain the split guess-rate columns: **VN / Artist / Song /
+Dev / Comp**, **Avg Rig**, **Rig GR%** and **Offlist GR%**, pooled over
+the same range as the rest of the row (`erumodeSplitStats` in
+`lib/player-stats.ts`). Everything is summed from raw counts and divided once —
+per-type rates weighted by each tournament's song count and counting only
+tournaments where that answer type was active, rig and off-list rates over
+their own numerators and denominators — so a three-song event never outweighs a
+thirty-song one, and the pooled rates match what the match Guess Rate table
+would compute over the same tournaments. Avg Rig is the mean on-list (rig)
+guess count per tournament in view; the other three are percentages, `—` while
+the range has nothing to divide.
+
+These five answer-type columns are the one place `/players` doesn't shade its
+percentages: side by side, five gradients read as a single wall of colour, so
+each type picks out its own best three rates (`SPLIT_TOP_MARK` in
+`components/PlayerListTable.tsx`) in accent gold instead. 0% and players with no
+guesses of that type are skipped, so a type nobody answered correctly marks
+nobody rather than handing the top spot to a zero; the marked three are computed
+from the unsorted rows, so sorting the list never moves the highlight. Every
+other percentage in the table — WR, GR, Rig GR, Offlist GR — keeps the
+`percentHeat` gradient.
 
 ### Player Tags tab
 
@@ -225,7 +317,7 @@ autodraft on the tag itself.
 ### Autodraft rank sources
 
 The match form's autodrafter (`components/TeamDrafter.tsx`) balances with one
-of three rank sources, picked with the pills above the players box:
+of two rank sources, picked with the pills above the players box:
 
 1. **Set Ranks** (default) — the saved Set Ranks for the tournament's own
    mode + sub-mode, so a new tournament only needs the players list pasted in.
@@ -241,12 +333,12 @@ of three rank sources, picked with the pills above the players box:
    decimal place, up or down to the nearest tenth (`roundToTenth` in
    `lib/teams.ts`) — before they're balanced, drafted and written back into the
    Teams box. Ranks you assign or paste are used exactly as given.
-3. **Pasted table** — only a `rank: name, name` table pasted into the Ranks
-   box (`11: karira, patt`), for one-off drafts outside the saved ladders.
 
 Whichever source is selected, the Ranks box still works as a per-tournament
-override on top of it, and only names actually listed can enter the draft
-(see `mergeHiddenRanks` in `lib/balance.ts`).
+override on top of it — a `rank: name, name` table pasted in there
+(`11: karira, patt`) is how a one-off draft outside the saved ladders is
+balanced — and only names actually listed can enter the draft (see
+`mergeHiddenRanks` in `lib/balance.ts`).
 
 Player identity is the normalized username (the same identity stats aggregate
 by), reconciled by two layers of name mapping: a match's own `renames` map, which
@@ -254,6 +346,26 @@ fixes that one tournament's roster paste, and the global **aliases** above, whic
 reconcile the same person across every tournament. A match's renames win where
 the two disagree — they're the more specific statement, made against that
 match's raw JSON.
+
+## Entering game scores
+
+The admin form's bracket takes a score per fixture, per team — a game's two
+sides, not the whole roster, so only the two teams in that fixture have boxes.
+A blank box means that team scored nothing: a score typed on one side only
+reads as that team winning by it with the other side on 0 (`12–0`), which is
+what lets the game decide its fixture, count in the standings and earn points.
+Read literally it would be dropped instead (`computeGameResult` needs two
+scored teams), which is why a single-sided game used to show up nowhere.
+
+That assumption is applied when a match is *read*, not when it's saved:
+`withAssumedZeroScores` in `lib/schedule.ts` is called from `rowToMatch` in
+`lib/store.ts`, the one point where stored files become a `Match`, so every
+reader agrees (standings, bracket cards, the admin form's own score boxes) and
+a tournament saved with a single-sided game counts the same as one entered with
+both numbers — no migration and no re-save. The database keeps exactly what was
+typed. A file with no score at all stays unplayed (nothing invents a `0–0`),
+and a file that can't be pinned to one fixture — no slot, and its raw JSON
+names no two roster teams — is left exactly as entered.
 
 ## How stats are computed
 

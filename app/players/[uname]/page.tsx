@@ -2,12 +2,19 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { findPlayerStats, listPlayerTags } from '@/lib/store';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
-import type { PlayerMatchEntry } from '@/lib/player-stats';
+import StatsRangeToggle from '@/components/StatsRangeToggle';
+import { slicePlayerSummary, type PlayerMatchEntry } from '@/lib/player-stats';
 import {
   matchFilterLabel,
   matchFilterQuery,
   parseSubmodeFilter,
 } from '@/lib/match-filter';
+import {
+  parseStatsRange,
+  playerViewQuery,
+  RECENT_TOUR_COUNT,
+  statsRangeLabel,
+} from '@/lib/stats-range';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +27,16 @@ export default async function PlayerPage({
   searchParams,
 }: {
   params: { uname: string };
-  searchParams: { mode?: string; submode?: string };
+  searchParams: { mode?: string; submode?: string; range?: string };
 }) {
   const uname = decodeURIComponent(params.uname);
   // Like /players, this view always works inside exactly one mode + sub-mode
   // (default Erumode Normal) — links in from /players already carry one, so
   // parseSubmodeFilter only has to clean up hand-edited URLs.
   const filter = parseSubmodeFilter(searchParams);
+  // Which slice of the player's history this page shows: their last
+  // RECENT_TOUR_COUNT tournaments, unless the URL asks for all of them.
+  const range = parseStatsRange(searchParams);
   const player = await findPlayerStats(uname, filter);
   const filterLabel = matchFilterLabel(filter);
   // Global Player/Bot tag for the header pill (see PlayerTagBadge).
@@ -53,7 +63,7 @@ export default async function PlayerPage({
         <p className="text-sm text-textMuted">
           No {filterLabel || 'matching'} tournaments played.{' '}
           <Link
-            href={`/players/${encodeURIComponent(overall.uname)}`}
+            href={`/players/${encodeURIComponent(overall.uname)}${playerViewQuery(filter, range)}`}
             className="text-accent underline"
           >
             Show every tournament
@@ -63,8 +73,15 @@ export default async function PlayerPage({
     );
   }
 
-  const ngmcEntries = player.entries.filter((e) => e.mode !== 'Erumode');
-  const erumodeEntries = player.entries.filter((e) => e.mode === 'Erumode');
+  // "Recent" numbers everything below — the stat cards, the history table and
+  // the header count — from the player's last RECENT_TOUR_COUNT tournaments.
+  // The all-time total stays on hand so the header can say which slice is on
+  // screen ("last 5 of 12 tournaments").
+  const view = range === 'recent' ? slicePlayerSummary(player, RECENT_TOUR_COUNT) : player;
+  const totalTournaments = player.entries.length;
+
+  const ngmcEntries = view.entries.filter((e) => e.mode !== 'Erumode');
+  const erumodeEntries = view.entries.filter((e) => e.mode === 'Erumode');
   // Under a concrete mode + sub-mode filter every entry is that mode's, but
   // splitting defensively keeps both sections honest for any future caller.
   const showErumode = filter.mode === 'Erumode' || erumodeEntries.length > 0;
@@ -73,47 +90,53 @@ export default async function PlayerPage({
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href={`/players${matchFilterQuery(filter)}`}
-          className="text-xs text-textMuted hover:text-text"
-        >
-          ← Players
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link
+            href={`/players${matchFilterQuery(filter)}`}
+            className="text-xs text-textMuted hover:text-text"
+          >
+            ← Players
+          </Link>
+          <StatsRangeToggle
+            range={range}
+            hrefFor={(r) => `/players/${encodeURIComponent(player.uname)}${playerViewQuery(filter, r)}`}
+          />
+        </div>
         <h1 className="mt-2 text-lg font-semibold">
           {player.uname}
           <PlayerTagBadge uname={player.uname} overrides={tags} className="ml-2" />
         </h1>
         <p className="text-xs text-textDim">
           {filterLabel ? `${filterLabel} · ` : ''}
-          {player.matchesPlayed} tournament{player.matchesPlayed !== 1 ? 's' : ''} played
+          {statsRangeLabel(range, view.entries.length, totalTournaments)}
         </p>
       </div>
 
       {/* Mode priority: Erumode's section is shown before NGMC's everywhere a
           mode is listed (see MODES in lib/types.ts). */}
-      {showErumode && player.erumode.matchesPlayed > 0 && (
+      {showErumode && view.erumode.matchesPlayed > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Guess Rate" value={pct(player.erumode.overallGuessRate)} />
-            <StatCard label="Songs" value={String(player.erumode.totalSongs)} />
+            <StatCard label="Guess Rate" value={pct(view.erumode.overallGuessRate)} />
+            <StatCard label="Songs" value={String(view.erumode.totalSongs)} />
           </div>
           <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
         </section>
       )}
 
-      {showNgmc && player.ngmc.matchesPlayed > 0 && (
+      {showNgmc && view.ngmc.matchesPlayed > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">NGMC</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Guess Rate" value={pct(player.ngmc.overallGuessRate)} />
-            <StatCard label="Songs" value={String(player.ngmc.totalSongs)} />
+            <StatCard label="Guess Rate" value={pct(view.ngmc.overallGuessRate)} />
+            <StatCard label="Songs" value={String(view.ngmc.totalSongs)} />
             <StatCard
               label="Attacks"
               value={
                 <>
-                  {player.ngmc.totalTaken}
-                  <span className="text-textMuted opacity-60">/{player.ngmc.totalEffTaken}</span>
+                  {view.ngmc.totalTaken}
+                  <span className="text-textMuted opacity-60">/{view.ngmc.totalEffTaken}</span>
                 </>
               }
               accent="taken"
@@ -122,8 +145,8 @@ export default async function PlayerPage({
               label="Blocks"
               value={
                 <>
-                  {player.ngmc.totalBlocked}
-                  <span className="text-textMuted opacity-60">/{player.ngmc.totalEffBlocked}</span>
+                  {view.ngmc.totalBlocked}
+                  <span className="text-textMuted opacity-60">/{view.ngmc.totalEffBlocked}</span>
                 </>
               }
               accent="blocked"
@@ -135,8 +158,8 @@ export default async function PlayerPage({
 
       {showErumode &&
         showNgmc &&
-        player.ngmc.matchesPlayed === 0 &&
-        player.erumode.matchesPlayed === 0 && (
+        view.ngmc.matchesPlayed === 0 &&
+        view.erumode.matchesPlayed === 0 && (
           <p className="text-sm text-textMuted">No tournament data for this player yet.</p>
         )}
     </div>

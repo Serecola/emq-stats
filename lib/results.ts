@@ -1,4 +1,5 @@
-import { norm } from './stats';
+import { fileRosterMembers, norm } from './stats';
+import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match, MatchFile, Team } from './types';
 
 export interface GameResult {
@@ -163,4 +164,82 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
     games,
     hasScores: games.length > 0,
   };
+}
+
+/** One player's record in a single tournament: how the games they played went. */
+export interface PlayerGameRecord {
+  wins: number;
+  ties: number;
+  losses: number;
+  games: number;
+}
+
+/**
+ * Per player, per tournament: the games they actually played and how each went.
+ *
+ * Keyed normalized-name -> match id -> record, so a caller can total a player
+ * up over whichever tournaments it means to count (the Player Manager's
+ * "Recent (5)" switch totals over a slice; the all-time view totals over
+ * everything) without this having to know about ranges.
+ *
+ * Three things it deliberately gets right, all of which a naive "credit the
+ * whole roster for the file's result" version gets wrong:
+ *
+ * - **Per game, not per tournament.** A bracket is a dozen files; the tally walks
+ *   them one by one, so a team dropped out of the second half of a tournament
+ *   stops winning.
+ * - **Per player, not per team.** A team member who didn't play that game isn't
+ *   in the file, so they neither win nor lose it (see fileRosterMembers in
+ *   lib/stats.ts — the same per-file participation the bracket itself uses).
+ * - **Only decided games.** A file with no result — unscored, or a single score
+ *   where the other side couldn't be pinned to a fixture — contributes nothing,
+ *   rather than counting as a loss for whoever was in it.
+ *
+ * Global aliases ride the same name-resolution path the per-match renames
+ * already use, so a merged identity is tallied as one player.
+ */
+export function computePlayerGameRecords(
+  matches: Match[],
+  aliases: PlayerAliases = {}
+): Record<string, Record<string, PlayerGameRecord>> {
+  const records: Record<string, Record<string, PlayerGameRecord>> = {};
+
+  for (const match of matches) {
+    const renames = withAliases(match.renames, aliases);
+    for (const file of match.files) {
+      const result = computeGameResult(file, match.teams);
+      if (!result) continue;
+      const present = fileRosterMembers(file, match.teams, renames);
+      for (const entry of result.entries) {
+        // One outcome per team in the game, credited to each of its members who
+        // was actually in that game.
+        const outcome: keyof Omit<PlayerGameRecord, 'games'> = result.isTie
+          ? 'ties'
+          : entry.isWinner
+            ? 'wins'
+            : 'losses';
+        for (const name of match.teams[entry.teamIndex]) {
+          const key = norm(name);
+          if (!present.has(key)) continue;
+          const perMatch = (records[key] ??= {});
+          const record = (perMatch[match.id] ??= { wins: 0, ties: 0, losses: 0, games: 0 });
+          record[outcome]++;
+          record.games++;
+        }
+      }
+    }
+  }
+
+  return records;
+}
+
+/**
+ * A record as a win percentage: a win is worth a point, a tie half, a loss
+ * nothing, over the games played — so 2 wins, 1 tie and 3 losses is
+ * (2 + 0.5) / 6 = 41.7%. Null when there's no game to divide by, so a caller
+ * can print a dash instead of a 0% that reads like a loss streak.
+ */
+export function winRatePct(record: PlayerGameRecord | undefined): number | null {
+  if (!record || record.games === 0) return null;
+  return (100 * (record.wins + 0.5 * record.ties)) / record.games;
 }

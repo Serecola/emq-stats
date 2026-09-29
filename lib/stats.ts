@@ -1,6 +1,7 @@
 import type {
   AttackRecord,
   Match,
+  MatchFile,
   MatchStats,
   PlayerStats,
   Team,
@@ -206,4 +207,35 @@ export function extractUsernames(data: unknown): string[] {
     }
   }
   return ordered;
+}
+
+/**
+ * Which roster members actually appear in one raw song-history file, as
+ * normalized usernames with the match's own renames applied.
+ *
+ * Per *file*, not per tournament: an uploaded bracket carries a dozen games and
+ * a player on the roster doesn't necessarily play all of them, so anything that
+ * credits someone for a game has to ask about that game. Two callers share this
+ * walk rather than repeating it — the bracket's file→fixture placement (via
+ * `fileParticipantIndices` in lib/schedule.ts) and the per-player win/loss/tally
+ * (via `computePlayerGameRecords` in lib/results.ts) — since both must agree on
+ * who was in the room.
+ *
+ * Returns roster keys only: a name in the export that isn't on any team is
+ * dropped here, and the admin form surfaces those separately as unmatched names.
+ */
+export function fileRosterMembers(
+  file: Pick<MatchFile, 'data'>,
+  teams: Team[],
+  renames: Record<string, string> = {}
+): Set<string> {
+  const roster = new Set<string>();
+  for (const team of teams) for (const name of team) roster.add(norm(name));
+
+  const present = new Set<string>();
+  for (const username of extractUsernames(file.data)) {
+    const key = norm(renames[norm(username)] || username);
+    if (roster.has(key)) present.add(key);
+  }
+  return present;
 }

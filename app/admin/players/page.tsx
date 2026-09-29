@@ -3,6 +3,7 @@ import LogoutButton from '@/components/LogoutButton';
 import { resolvePlayerTag } from '@/lib/player-tags';
 import ModeToggle from '@/components/ModeToggle';
 import PlayerRankTable from '@/components/PlayerRankTable';
+import StatsRangeToggle from '@/components/StatsRangeToggle';
 import SetRanksTransfer from '@/components/SetRanksTransfer';
 import PlayerTagManager from '@/components/PlayerTagManager';
 import {
@@ -21,6 +22,7 @@ import {
   parseSubmodeFilter,
   type MatchFilter,
 } from '@/lib/match-filter';
+import { parseStatsRange, playerViewQuery, RECENT_TOUR_COUNT, statsRangeFragment, type StatsRange } from '@/lib/stats-range';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,15 +45,17 @@ const tabChipClass = (isActive: boolean): string =>
  * check in this page and silently re-renders the Ranks tab. Appending
  * `tab` after the filter is no better: "?mode=…&tab=…" is a second "?" too.
  */
-function tabHref(tab: 'ranks' | 'tags', filter: MatchFilter): string {
+function tabHref(tab: 'ranks' | 'tags', filter: MatchFilter, range: StatsRange): string {
   const filterQuery = matchFilterQuery(filter);
-  return `/admin/players?tab=${tab}${filterQuery ? `&${filterQuery.slice(1)}` : ''}`;
+  return `/admin/players?tab=${tab}${filterQuery ? `&${filterQuery.slice(1)}` : ''}${
+    range === 'all' ? '&range=all' : ''
+  }`;
 }
 
 export default async function AdminPlayersPage({
   searchParams,
 }: {
-  searchParams: { mode?: string; submode?: string; tab?: string };
+  searchParams: { mode?: string; submode?: string; tab?: string; range?: string };
 }) {
   // Ranks are per gamemode *and* sub-mode (that's what a draft is balanced
   // at), so this view always works inside exactly one sub-mode — there is no
@@ -60,6 +64,12 @@ export default async function AdminPlayersPage({
   const { mode, submode } = parseSubmodeFilter(searchParams);
   const filter: MatchFilter = { mode, submode };
   const tab = searchParams.tab === 'tags' ? 'tags' : 'ranks';
+  // What the ladder's Expected Ranks are read over: each player's last
+  // RECENT_TOUR_COUNT tournaments in this sub-mode (the default) or their whole
+  // history here. Lives in the URL, so the switch is bookmarkable and survives
+  // the sub-mode, tab and player-page links below.
+  const range = parseStatsRange(searchParams);
+  const rangeLimit = range === 'recent' ? RECENT_TOUR_COUNT : undefined;
 
   const allMatches = await listMatchSummaries();
 
@@ -67,10 +77,10 @@ export default async function AdminPlayersPage({
   // only `tab` is added/dropped, so coming back lands on the same ladder.
   const tabs = (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Link href={tabHref('ranks', filter)} className={tabChipClass(tab === 'ranks')}>
+      <Link href={tabHref('ranks', filter, range)} className={tabChipClass(tab === 'ranks')}>
         Set Ranks
       </Link>
-      <Link href={tabHref('tags', filter)} className={tabChipClass(tab === 'tags')}>
+      <Link href={tabHref('tags', filter, range)} className={tabChipClass(tab === 'tags')}>
         Player Tags
       </Link>
     </div>
@@ -149,10 +159,17 @@ export default async function AdminPlayersPage({
   const matches = applyMatchFilter(allMatches, filter);
   // Only players who have actually played this gamemode + sub-mode get a row:
   // a sibling sub-mode's results are a different game, so they never stand in
-  // for missing data here (see listPlayerRankRows).
-  const rows = await listPlayerRankRows(mode, submode);
+  // for missing data here (see listPlayerRankRows). `rangeLimit` narrows each
+  // row to that player's most recent tournaments for the "Recent" switch.
+  const rows = await listPlayerRankRows(mode, submode, rangeLimit);
 
   const selection = `${mode} ${submode}`;
+  // Spelled out in the copy under the table, so it says which tournaments the
+  // Expected Ranks were read over instead of leaving that to the switch alone.
+  const rangePhrase =
+    range === 'recent'
+      ? `their last ${RECENT_TOUR_COUNT} ${selection} tournaments`
+      : `every ${selection} tournament they have played`;
   const rankedCount = rows.filter((r) => r.setRank !== null).length;
   const summary =
     `${rows.length} player${rows.length !== 1 ? 's' : ''} in ${matches.length} ${selection} ` +
@@ -172,7 +189,13 @@ export default async function AdminPlayersPage({
           <h1 className="text-lg font-semibold">Player Manager</h1>
           <p className="text-xs text-textDim">{summary}</p>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-3">
+          {/* Reached only on the Ranks tab (the Tags tab returns above): the
+              href goes through tabHref rather than playerViewQuery, because
+              `?tab=ranks` already holds a '?' of its own. */}
+          <StatsRangeToggle range={range} hrefFor={(r) => tabHref('ranks', filter, r)} />
+          <LogoutButton />
+        </div>
       </div>
 
       {tabs}
@@ -182,6 +205,7 @@ export default async function AdminPlayersPage({
         basePath="/admin/players"
         includeAll={false}
         includeAllSubmodes={false}
+        extraQuery={statsRangeFragment(range)}
       />
 
       {/* Above the table, and outside the empty-state branch on purpose:
@@ -206,14 +230,14 @@ export default async function AdminPlayersPage({
             rows={rows}
             mode={mode}
             submode={submode}
-            filterQuery={matchFilterQuery(filter)}
+            playerQuery={playerViewQuery(filter, range)}
           />
           <p className="text-xs text-textDim">
             Set Rank is manual and stored per gamemode + sub-mode — it is the rank
             autodraft balances with for a {selection} tournament. Expected Rank is the
-            player&apos;s songs-weighted Performance across these {selection} tournaments;
-            Expectation compares the two (Expected Rank − Set Rank). Only {selection} games
-            count towards either — another sub-mode is a different game, so its results are
+            player&apos;s songs-weighted Performance across {rangePhrase}, and Expectation
+            compares the two (Expected Rank − Set Rank). Only {selection} games count
+            towards either — another sub-mode is a different game, so its results are
             never used as a stand-in.
           </p>
         </>

@@ -90,3 +90,8 @@ export function compareValues(a: number | string, b: number | string, dir: SortD
   }
   return dir === 'asc' ? cmp : -cmp;
 }
+
+// percentHeat now lives in lib/percent-heat.ts — outside the 'use client'
+// boundary, so the server-rendered /players list can call it too. Re-exported
+// here so client tables keep one import site for the shared table helpers.
+export { percentHeat } from '@/lib/percent-heat';

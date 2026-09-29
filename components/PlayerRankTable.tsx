@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { compareValues, SortableHeader, toggleSort, type SortDir } from '@/components/SortableTable';
+import { useState, type CSSProperties } from 'react';
+import { compareValues, percentHeat, SortableHeader, toggleSort, type SortDir } from '@/components/SortableTable';
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerRankInput from '@/components/PlayerRankInput';
 import type { PlayerRankRow } from '@/lib/player-ranks';
@@ -15,6 +15,13 @@ interface Column {
   accessor: (row: PlayerRankRow) => number | string;
   render: (row: PlayerRankRow) => React.ReactNode;
   className?: string;
+  /**
+   * Per-cell inline background, for the columns that read better shaded than
+   * printed (see percentHeat). Rendered on the <td> itself, so a tinted cell
+   * keeps its colour through the row and column hover washes — those are
+   * deliberately skipped on the shaded columns rather than fighting them.
+   */
+  cellStyle?: (row: PlayerRankRow) => CSSProperties | undefined;
 }
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -38,12 +45,15 @@ export default function PlayerRankTable({
   rows,
   mode,
   submode,
-  filterQuery,
+  playerQuery,
 }: {
   rows: PlayerRankRow[];
   mode: Mode;
   submode: Submode;
-  filterQuery: string;
+  // Query the player name links carry: the mode + sub-mode, plus the range the
+  // table itself is showing (see playerViewQuery), so clicking through lands on
+  // the same reading of that player's history rather than resetting to Recent.
+  playerQuery: string;
 }) {
   const [sortKey, setSortKey] = useState<string | null>('expectedRank');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -56,7 +66,7 @@ export default function PlayerRankTable({
       accessor: (r) => r.uname.toLowerCase(),
       render: (r) => (
         <Link
-          href={`/players/${encodeURIComponent(r.uname)}${filterQuery}`}
+          href={`/players/${encodeURIComponent(r.uname)}${playerQuery}`}
           className="font-medium hover:underline"
         >
           {r.uname}
@@ -66,15 +76,47 @@ export default function PlayerRankTable({
     {
       key: 'matchesPlayed',
       label: 'Tours',
-      title: `Tournaments in ${mode} ${submode}`,
+      title: `Tournaments in ${mode} ${submode} — the range above decides how many`,
       accessor: (r) => r.matchesPlayed,
-      render: (r) => r.matchesPlayed,
+      // A trimmed row keeps its all-time count visible, so "5 / 12" is honest
+      // about there being seven older tournaments behind the range.
+      render: (r) =>
+        r.matchesPlayedAllTime > r.matchesPlayed ? (
+          <span title={`Last ${r.matchesPlayed} of ${r.matchesPlayedAllTime} tournaments`}>
+            {r.matchesPlayed}
+            <span className="opacity-60">/{r.matchesPlayedAllTime}</span>
+          </span>
+        ) : (
+          r.matchesPlayed
+        ),
     },
-    { key: 'songs', label: 'Songs', accessor: (r) => r.songs, render: (r) => r.songs },
+    {
+      key: 'winRate',
+      label: 'Winrate',
+      // Stated on the header so the scoring doesn't have to be guessed at: a win
+      // is a point, a tie half, a loss nothing, over the games played.
+      title: `Winrate over the games they played — 1 point a win, 0.5 a tie, 0 a loss (${mode} ${submode}, the range above decides how many)`,
+      accessor: (r) => r.winRate ?? (sortDir === 'asc' ? Infinity : -Infinity),
+      cellStyle: (r) => percentHeat(r.winRate),
+      render: (r) =>
+        r.winRate === null ? (
+          <span className="text-textDim">—</span>
+        ) : (
+          <span
+            className="text-textSub"
+            title={`${r.record.wins}W ${r.record.ties}T ${r.record.losses}L over ${r.record.games} game${
+              r.record.games !== 1 ? 's' : ''
+            }`}
+          >
+            {pct(r.winRate)}
+          </span>
+        ),
+    },
     {
       key: 'guessRate',
       label: 'Guess Rate',
       accessor: (r) => r.guessRate,
+      cellStyle: (r) => percentHeat(r.guessRate),
       render: (r) => <span className="text-accent">{pct(r.guessRate)}</span>,
     },
     {
@@ -154,9 +196,13 @@ export default function PlayerRankTable({
               {columns.map((c) => (
                 <td
                   key={c.key}
+                  // The shaded columns keep their tint through a hover rather
+                  // than washing it out: `hoveredCol` is skipped there, since
+                  // an inline background outranks the class either way.
                   className={`px-3 py-2 ${
                     c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted'
-                  } ${hoveredCol === c.key ? 'bg-white/5' : ''} ${c.className ?? ''}`}
+                  } ${hoveredCol === c.key && !c.cellStyle ? 'bg-white/5' : ''} ${c.className ?? ''}`}
+                  style={c.cellStyle?.(row)}
                   onMouseEnter={() => setHoveredCol(c.key)}
                   onMouseLeave={() => setHoveredCol(null)}
                 >

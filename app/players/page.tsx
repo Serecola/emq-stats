@@ -1,25 +1,23 @@
-import Link from 'next/link';
-import { listMatchSummaries, listPlayerStats, listPlayerTags } from '@/lib/store';
+import { listMatchSummaries, listPlayerRankRows, listPlayerStats, listPlayerTags } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
-import PlayerTagBadge from '@/components/PlayerTagBadge';
+import PlayerListTable, { type PlayerRow } from '@/components/PlayerListTable';
+import StatsRangeToggle from '@/components/StatsRangeToggle';
+import { erumodeSplitStats, slicePlayerSummary } from '@/lib/player-stats';
+import { norm } from '@/lib/stats';
 import {
   applyMatchFilter,
   matchFilterLabel,
-  matchFilterQuery,
   parseSubmodeFilter,
   type MatchFilter,
 } from '@/lib/match-filter';
+import { parseStatsRange, playerViewQuery, RECENT_TOUR_COUNT, statsRangeFragment } from '@/lib/stats-range';
 
 export const dynamic = 'force-dynamic';
-
-function pct(n: number): string {
-  return `${n.toFixed(1)}%`;
-}
 
 export default async function PlayersPage({
   searchParams,
 }: {
-  searchParams: { mode?: string; submode?: string };
+  searchParams: { mode?: string; submode?: string; range?: string };
 }) {
   // This view always works inside exactly one mode + sub-mode — same navigator
   // as the Player Manager: a mode row (Erumode / NGMC) plus the active mode's
@@ -27,25 +25,55 @@ export default async function PlayersPage({
   // the first mode's first sub-mode (Erumode Normal).
   const { mode, submode } = parseSubmodeFilter(searchParams);
   const filter: MatchFilter = { mode, submode };
+  // Which slice of each player's history the columns are built from: their last
+  // RECENT_TOUR_COUNT tournaments (the default) or everything in this sub-mode.
+  // Per player, never per tournament — a list of last-5-of-the-sub-mode would be
+  // a different and much less useful set of numbers.
+  const range = parseStatsRange(searchParams);
+  const rangeLimit = range === 'recent' ? RECENT_TOUR_COUNT : undefined;
   const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
-  const players = await listPlayerStats(filter);
+  // Attacks and blocks only exist in NGMC exports, so those columns only make
+  // sense inside an NGMC sub-mode — an Erumode selection gets none. The same
+  // gate drives the Erumode-only split guess-rate columns below.
+  const isErumode = filter.mode === 'Erumode';
+  // listPlayerStats is the cached all-time read (one pass over the sub-mode's
+  // raw JSON); the range is then arithmetic over each player's own rows, so
+  // the all-time figures are never re-derived.
+  const summaries = await listPlayerStats(filter);
+  // The admin ladder's rows over the same range — Winrate, Expected Rank,
+  // Set Rank and Expectation come from exactly the numbers Player Manager
+  // shows, joined below by normalized username.
+  const rankRows = await listPlayerRankRows(mode, submode, rangeLimit);
+  const rankByKey = new Map(rankRows.map((r) => [r.playerKey, r]));
+  const players: PlayerRow[] = summaries.map((summary) => {
+    const player = range === 'recent' ? slicePlayerSummary(summary, RECENT_TOUR_COUNT) : summary;
+    return {
+      player,
+      allTimeTournaments: summary.matchesPlayed,
+      rank: rankByKey.get(norm(summary.uname)) ?? null,
+      split: isErumode ? erumodeSplitStats(player.entries) : null,
+    };
+  });
   // Global Player/Bot tags — usernames tagged Bot get a pill next to their
   // name below (see PlayerTagBadge).
   const tags = await listPlayerTags();
   const filterLabel = matchFilterLabel(filter);
-  // Attacks and blocks only exist in NGMC exports, so those columns only make
-  // sense inside an NGMC sub-mode — an Erumode selection gets none.
-  const isErumode = filter.mode === 'Erumode';
   const summary = `${players.length} player${players.length !== 1 ? 's' : ''} across ${
     matches.length
   } ${filterLabel ? `${filterLabel} ` : ''}tournament${matches.length !== 1 ? 's' : ''}`;
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold">Players</h1>
-        <p className="text-xs text-textDim">{summary}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">Players</h1>
+          <p className="text-xs text-textDim">{summary}</p>
+        </div>
+        <StatsRangeToggle
+          range={range}
+          hrefFor={(r) => `/players${playerViewQuery(filter, r)}`}
+        />
       </div>
 
       <ModeToggle
@@ -53,6 +81,7 @@ export default async function PlayersPage({
         basePath="/players"
         includeAll={false}
         includeAllSubmodes={false}
+        extraQuery={statsRangeFragment(range)}
       />
 
       {players.length === 0 ? (
@@ -62,77 +91,14 @@ export default async function PlayersPage({
             : `No players in ${filterLabel} tournaments yet.`}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-          <table className="w-full min-w-[520px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
-                <th className="px-3 py-2 font-medium">Player</th>
-                <th className="px-3 py-2 text-right font-medium">Tournaments</th>
-                <th
-                  className="px-3 py-2 text-right font-medium"
-                  title={`${filter.mode} guess rate`}
-                >
-                  Guess Rate
-                </th>
-                {!isErumode && (
-                  <>
-                    <th className="px-3 py-2 text-right font-medium">Attacks</th>
-                    <th className="px-3 py-2 text-right font-medium">Blocks</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((p) => (
-                <tr key={p.uname} className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50">
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/players/${encodeURIComponent(p.uname)}${matchFilterQuery(filter)}`}
-                      className="font-medium hover:underline"
-                    >
-                      {p.uname}
-                    </Link>
-                    <PlayerTagBadge uname={p.uname} overrides={tags} className="ml-1.5" />
-                  </td>
-                  <td className="px-3 py-2 text-right text-textMuted">{p.matchesPlayed}</td>
-                  <td className="px-3 py-2 text-right text-accent">
-                    {isErumode
-                      ? p.erumode.matchesPlayed
-                        ? pct(p.erumode.overallGuessRate)
-                        : '—'
-                      : p.ngmc.matchesPlayed
-                        ? pct(p.ngmc.overallGuessRate)
-                        : '—'}
-                  </td>
-                  {!isErumode && (
-                    <>
-                      <td className="px-3 py-2 text-right font-medium text-taken">
-                        {p.ngmc.matchesPlayed ? (
-                          <>
-                            {p.ngmc.totalTaken}
-                            <span className="opacity-60">/{p.ngmc.totalEffTaken}</span>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-blocked">
-                        {p.ngmc.matchesPlayed ? (
-                          <>
-                            {p.ngmc.totalBlocked}
-                            <span className="opacity-60">/{p.ngmc.totalEffBlocked}</span>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlayerListTable
+          players={players}
+          mode={mode}
+          submode={submode}
+          filterLabel={filterLabel}
+          tags={tags}
+          playerQuery={playerViewQuery(filter, range)}
+        />
       )}
     </div>
   );

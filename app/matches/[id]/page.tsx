@@ -16,6 +16,7 @@ import {
 } from '@/lib/schedule';
 import { computeMatchResults } from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
+import { hasAdminSession } from '@/lib/admin-session';
 import StatsTable from '@/components/StatsTable';
 import GuessRateTable from '@/components/GuessRateTable';
 import ResultsSection from '@/components/ResultsSection';
@@ -51,6 +52,11 @@ export default async function MatchPage({
 }) {
   const match = await getMatch(params.id);
   if (!match) notFound();
+
+  // An admin viewing the public page gets a shortcut back into this
+  // tournament's editor; a normal visitor isn't shown the control at all (the
+  // session cookie is httpOnly, so only the server can answer this).
+  const isAdmin = hasAdminSession();
 
   // Global Player/Bot tags for the bot pills in the stats tables below.
   const playerTags = await listPlayerTags();
@@ -151,7 +157,22 @@ export default async function MatchPage({
       <MatchSectionNav sections={jumpSections} />
       <BackToTop />
       <div>
-        <Link href="/" className="text-xs text-textMuted hover:text-text">← All tournaments</Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href="/" className="text-xs text-textMuted hover:text-text">
+            ← All tournaments
+          </Link>
+          {/* Admin-only way back into the editor. The editor's own Player view
+              link (ShareMatchLink) points the other way, so an admin can move
+              between managing and reading the same tournament from here. */}
+          {isAdmin && (
+            <Link
+              href={`/admin/matches/${match.id}/edit`}
+              className="rounded-md border border-border px-2.5 py-1 text-xs text-textSub transition-colors hover:border-textSub hover:text-text"
+            >
+              Edit tournament
+            </Link>
+          )}
+        </div>
         <h1 className="mt-2 text-lg font-semibold">{match.title}</h1>
         <p className="text-xs text-textDim">
           {date} · {match.files.length} file{match.files.length !== 1 ? 's' : ''}

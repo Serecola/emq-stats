@@ -49,7 +49,12 @@ export default async function AdminPage({
           {matches.map((m) => (
             <div key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <Link href={`/matches/${m.id}`} className="font-medium hover:underline">
+                {/* The title opens the editor, not the player view: from here
+                    the admin is managing tournaments, and the controls on this
+                    page all act on the saved record (roster, uploads, scores,
+                    deletion), never on the public rendering — the row's own
+                    Player view link is the way to that. */}
+                <Link href={`/admin/matches/${m.id}/edit`} className="font-medium hover:underline">
                   {m.title}
                 </Link>
                 <div className="mt-0.5 text-xs text-textMuted">
@@ -59,8 +64,12 @@ export default async function AdminPage({
                 </div>
               </div>
               <div className="flex flex-shrink-0 items-center gap-3 text-xs">
-                <Link href={`/admin/matches/${m.id}/edit`} className="text-textSub hover:text-text">
-                  Edit
+                {/* The title above opens the editor, so this column is what the
+                    editor no longer offers: a click straight to what players
+                    see (the editor's own ShareMatchLink only copies the URL).
+                    Keeps the public page reachable from here at all. */}
+                <Link href={`/matches/${m.id}`} className="text-textSub hover:text-text">
+                  Player view
                 </Link>
                 <DeleteMatchButton id={m.id} title={m.title} />
               </div>

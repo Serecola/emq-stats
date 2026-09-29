@@ -40,6 +40,14 @@ export interface ErumodeGuessRow {
   perType: Record<string, number>; // answer type -> guess rate %, active types only
   rigGr: number;
   rigCount: number;
+  // Raw counts behind rigGr/offlistGr, kept beside them so a caller pooling
+  // several tournaments can sum the counts and divide once — averaging the
+  // percentages instead would weight a three-song event like a thirty-song
+  // one. Both sides of each fraction carry the same per-active-answer-type
+  // multiplicity, so pooling reproduces the tournament's own rate exactly.
+  rigHits: number; // on-list guesses correct, once per active answer type
+  offlistHits: number; // correct guesses not on the list (same multiplicity)
+  offlistCount: number; // guesses not on the list (same multiplicity)
   offlistGr: number; // % correct among guesses NOT on their pre-made list
   songs: number;
   games: number;
@@ -279,6 +287,9 @@ export function computeGuessRateStats(
       perType,
       rigGr,
       rigCount: acc.rigCount,
+      rigHits: totalActiveRigHits,
+      offlistHits: offlistCorrect,
+      offlistCount: offlistOpportunities,
       offlistGr: offlistOpportunities > 0 ? (100 * offlistCorrect) / offlistOpportunities : 0,
       songs: acc.songCount[3],
       games: acc.gameFiles.size,

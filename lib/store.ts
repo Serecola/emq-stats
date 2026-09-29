@@ -9,6 +9,7 @@ import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-fi
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, type PlayerRankRow } from './player-ranks';
 import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
+import { withAssumedZeroScores } from './schedule';
 import { norm } from './stats';
 import type {
   Match,
@@ -19,6 +20,7 @@ import type {
   Region,
   SetRanks,
   Submode,
+  Team,
 } from './types';
 
 interface MatchRow {
@@ -38,6 +40,8 @@ interface MatchRow {
 }
 
 function rowToMatch(row: MatchRow): Match {
+  const teams: Team[] = JSON.parse(row.teams);
+  const renames: Record<string, string> = row.renames ? JSON.parse(row.renames) : {};
   return {
     id: row.id,
     title: row.title,
@@ -47,9 +51,15 @@ function rowToMatch(row: MatchRow): Match {
     mode: row.mode as Mode,
     submode: row.submode as Submode,
     createdAt: row.created_at,
-    teams: JSON.parse(row.teams),
-    files: JSON.parse(row.files),
-    renames: row.renames ? JSON.parse(row.renames) : {},
+    teams,
+    // The scores as entered, plus a 0 for any game only one side of which was
+    // scored — a blank box means "scored nothing", not "didn't play" — see
+    // withAssumedZeroScores. Done here, at the single point where stored files
+    // become a Match, so every reader agrees (standings, bracket cards, the
+    // admin form's own score boxes) and records saved before this rule existed
+    // read the same as fresh ones, with no migration and no re-save.
+    files: withAssumedZeroScores(teams, JSON.parse(row.files), renames),
+    renames,
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
   };
 }
@@ -430,15 +440,17 @@ export async function findPlayerStats(
 
 /**
  * The Player Manager's table for one gamemode + sub-mode. Cached per
- * combination because computing it walks every one of that sub-mode's
- * tournaments' raw JSON.
+ * combination — and per range, since the "Recent (5)" rows are a different
+ * table from the all-time ones — because computing it walks every one of that
+ * sub-mode's tournaments' raw JSON.
  */
 export async function listPlayerRankRows(
   mode: Mode,
-  submode: Submode
+  submode: Submode,
+  limit?: number
 ): Promise<PlayerRankRow[]> {
   await ensureSchema();
-  return cached(`player-ranks:${mode}:${submode}`, async () => {
+  return cached(`player-ranks:${mode}:${submode}:${limit ?? 'all'}`, async () => {
     const allMatches = await listMatches();
     // This sub-mode and nothing else — a sibling sub-mode's tournaments are a
     // different game, so they never contribute figures here.
@@ -449,7 +461,8 @@ export async function listPlayerRankRows(
       setRanks,
       mode,
       submode,
-      await listPlayerAliases()
+      await listPlayerAliases(),
+      limit
     );
   });
 }
