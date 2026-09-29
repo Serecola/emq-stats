@@ -120,6 +120,15 @@ proxy's limits apply on top of the app's:
 
     location /emq-stats {
       proxy_pass http://127.0.0.1:3000;
+
+      # Hand the app the address the visitor actually used — see the Host
+      # bullet below for what goes wrong without these. `$host` is the
+      # requested hostname; use `$http_host` if the site is on a non-standard
+      # port and the port has to survive.
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
   }
   ```
@@ -132,6 +141,30 @@ proxy's limits apply on top of the app's:
 - **`proxy_read_timeout`** — a save also walks the tournament's JSON to rebuild
   the player/song catalog before it responds, which on a large bracket can pass
   nginx's 60s default. Give the proxy headroom (`proxy_read_timeout 300s;`).
+
+- **`Host` / `X-Forwarded-*`** — the proxy has to tell the app which address the
+  *visitor* used, because Next builds every absolute URL out of the headers it
+  receives: the protocol from `X-Forwarded-Proto` when set (otherwise the
+  socket), the host from `X-Forwarded-Host`, else `Host` — `base-server.js`'s
+  `req.headers["x-forwarded-host"] ??= req.headers["host"]`, which is why an
+  upstream `X-Forwarded-Proto` is honoured while a missing `X-Forwarded-Host`
+  silently falls back to whatever `Host` the proxy sent. nginx's default is *its
+  own* upstream address (the host in `proxy_pass`), so with the headers missing
+  the app believes it is serving `localhost:3000`, and hitting `/admin` bounces
+  the visitor to `https://localhost:3000/emq-stats/admin/login?from=%2Fadmin` —
+  off the domain, with the `https` that the proxy's `X-Forwarded-Proto` supplied
+  next to the `localhost` that `Host` supplied. That redirect is
+  `middleware.ts`'s admin gate, and it is the only absolute URL the app hands a
+  browser of its own accord; everything else (asset paths, `<Link>`, the
+  login form's `fetch`, the post-login `router.push`) is path-relative or
+  basePath-prefixed precisely so a proxy can't misplace it. The host Next saw is
+  what the URL names — `localhost:3000` means the config forwards a
+  `proxy_pass http://localhost:3000;` address rather than a `Host` header.
+
+  Verify from outside with `curl -sSI https://<domain>/emq-stats/admin`: the
+  `Location` should be `/emq-stats/admin/login?from=%2Fadmin` (a path the
+  browser resolves against the domain, as in this repo's Next 14.2.35), or at
+  worst an absolute URL naming that same domain — never `localhost`.
 
 ## Searching tournaments by player
 
