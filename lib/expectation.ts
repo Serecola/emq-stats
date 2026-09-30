@@ -32,11 +32,18 @@ export function expectationFromDiff(diff: number): ExpectationLabel {
  * Badge colors per verdict. PROMOTE/DEMOTE use a full green/red theme
  * (background + text); EXPECTED stays null so it renders as plain, neutral
  * text rather than a badge — it's meant to read as "nothing notable".
+ *
+ * DEMOTE's text is deliberately lighter than the theme's `taken` red. A badge
+ * paints its text on a wash of its *own* hue, so the tint raises the background
+ * under the text and eats the contrast that mid-tone color would have on a
+ * plain surface — at the `taken` value the label measured 4.0:1 here, under
+ * AA's 4.5:1. Lightening the text and leaving the wash alone buys it 5.5:1.
+ * The other three washes are light enough already to carry their text.
  */
 export const EXPECTATION_STYLES: Record<ExpectationLabel, { bg: string; text: string } | null> = {
   PROMOTE: { bg: 'rgba(34,197,94,0.15)', text: '#22c55e' }, // green
   'NEAR PROMOTE': { bg: 'rgba(134,239,172,0.12)', text: '#86efac' }, // light green
   EXPECTED: null, // normal — no badge
   'NEAR DEMOTE': { bg: 'rgba(252,165,165,0.12)', text: '#fca5a5' }, // light red
-  DEMOTE: { bg: 'rgba(224,82,82,0.15)', text: '#e05252' }, // red
+  DEMOTE: { bg: 'rgba(224,82,82,0.15)', text: '#f27676' }, // red — see note above
 };

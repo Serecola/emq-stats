@@ -783,6 +783,7 @@ export default function MatchForm({
                           result={tie ? 'tie' : aWin ? 'win' : null}
                           highlighted={hoveredTeam === m.teamAIndex}
                           onHover={setHoveredTeam}
+                          divider
                           score={
                             <ScoreInput
                               value={aVal}

@@ -276,6 +276,7 @@ function MatchupCard({
         result={tie ? 'tie' : aWin ? 'win' : null}
         highlighted={hoveredTeam === matchup.teamAIndex}
         onHover={onHoverTeam}
+        divider
       />
       <Row
         members={teamB}
@@ -300,6 +301,7 @@ function Row({
   result,
   highlighted,
   onHover,
+  divider,
 }: {
   members: Team;
   teamIndex: number;
@@ -307,6 +309,8 @@ function Row({
   result: 'win' | 'tie' | null;
   highlighted: boolean;
   onHover: (teamIndex: number) => void;
+  /** Rule under this row — set on the first team of the pair only. */
+  divider?: boolean;
 }) {
   const win = result === 'win';
   const tie = result === 'tie';
@@ -317,6 +321,7 @@ function Row({
       result={result}
       highlighted={highlighted}
       onHover={onHover}
+      divider={divider}
       score={
         <span
           className={`flex-shrink-0 rounded px-1.5 text-xs font-semibold ${

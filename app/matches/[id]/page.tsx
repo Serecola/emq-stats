@@ -248,7 +248,7 @@ export default async function MatchPage({
             <ErrorBox label="Attacks & Blocks" err={matchStatsError} />
           ) : matchStats ? (
             <div id="attacks-blocks" className="scroll-mt-16">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-textMuted">
                 Attacks &amp; Blocks
               </h3>
               <StatsTable stats={matchStats} playerTags={playerTags} />

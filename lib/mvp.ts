@@ -110,3 +110,56 @@ export function computeMvpStats(
 
   return { teams, mvps: mvps.slice(0, MVP_PODIUM_SIZE) };
 }
+
+/** "+4.56" / "-1.68" — always signed, two decimals, plain ASCII hyphen. */
+export function signed(n: number): string {
+  return `${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(2)}`;
+}
+
+/**
+ * Discord custom-emoji shortcodes, in podium order — the same order as the
+ * medals MvpSection draws. The copied text is meant to land in a Discord post,
+ * where these render as the real medals.
+ *
+ * Must stay at least as long as `MVP_PODIUM_SIZE`; `formatMvpSummary` falls
+ * back to the last entry rather than printing `undefined` if that ever slips.
+ */
+const PODIUM_EMOJI = [':first_place:', ':second_place:', ':third_place:'];
+
+/**
+ * The whole block as plain text, for pasting into a Discord post or a sheet.
+ *
+ * Built off the same `signed()` the page draws with, at the same precision
+ * (1dp per member, 2dp for every total), so a copy can never quote a different
+ * number than the page shows. The `#` headings keep the block's structure once
+ * it is pasted somewhere that isn't this app.
+ *
+ * A team with no rank baseline has no diff to report and is copied without
+ * one, exactly as on the page. A tournament where nobody carries a rank has no
+ * MVPs either, and the `# MVPs` heading is left off altogether rather than
+ * copied as a heading with nothing under it.
+ */
+export function formatMvpSummary(stats: MvpStats): string {
+  const lines: string[] = ['# Team Expected vs Actual'];
+
+  for (const team of stats.teams) {
+    const members = team.members
+      .map((m) => `${m.uname} (${m.playedLike.toFixed(1)})`)
+      .join(' ');
+    const delta = team.hasRanks ? ` (${signed(team.diff)}, from ${team.expectedRank})` : '';
+    lines.push(`${members} = ${team.playedLike.toFixed(2)}${delta}`);
+  }
+
+  if (stats.mvps.length > 0) {
+    lines.push('# MVPs');
+    stats.mvps.forEach((p, i) => {
+      const medal = PODIUM_EMOJI[i] ?? PODIUM_EMOJI[PODIUM_EMOJI.length - 1];
+      lines.push(
+        `${medal} ${p.uname}: Played like ${p.playedLike.toFixed(2)} ` +
+          `(Current Rank: ${p.rank}, ${signed(p.diff)})`
+      );
+    });
+  }
+
+  return lines.join('\n');
+}

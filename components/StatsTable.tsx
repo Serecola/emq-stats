@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { MatchStats, PlayerStats, PlayerTag, TeamStats } from '@/lib/types';
 import { teamColor } from '@/lib/team-colors';
-import { SortableHeader, toggleSort, compareValues, type SortDir } from './SortableTable';
+import { SortableHeader, toggleSort, compareValues, STATS_BODY_TEXT, STATS_HEADER_TEXT, type SortDir } from './SortableTable';
 import PlayerTagBadge from './PlayerTagBadge';
 
 type SortKey = 'uname' | 'correct' | 'taken' | 'blocked';
@@ -39,9 +39,9 @@ export default function StatsTable({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <table className="w-full border-collapse text-xs">
+      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
+          <tr className={`border-b border-border bg-surfaceAlt text-left uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
             <th className="w-10 px-3 py-2 font-medium">#</th>
             <SortableHeader label="Player" sortKey="uname" activeKey={sortKey} dir={sortDir} onClick={onSort} align="left" />
             <SortableHeader label="Correct" sortKey="correct" activeKey={sortKey} dir={sortDir} onClick={onSort} className="w-20" />
@@ -117,13 +117,18 @@ function TeamRows({
     <>
       <tr className="border-b border-border bg-surfaceAlt/60">
         <td colSpan={5} className="px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+          {/* The per-team summary pills paint their label on a wash of the same
+              hue, so the label is lighter than the `taken` / `blocked` tokens
+              used for the plain-text columns below — the wash lifts the
+              background under the text, and a mid-tone color loses the
+              contrast it would have on a bare surface. */}
+          <div className={`flex flex-wrap items-center gap-2 font-semibold uppercase tracking-wide ${STATS_BODY_TEXT}`}>
             <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: color }} />
             {team.label}&apos;s team
-            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(224,82,82,0.1)', color: '#e05252' }}>
+            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(224,82,82,0.1)', color: '#f27676' }}>
               ⚔ {team.taken}/{team.effTaken}
             </span>
-            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(77,143,224,0.1)', color: '#4d8fe0' }}>
+            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(77,143,224,0.1)', color: '#5c9ae8' }}>
               🛡 {team.blocked}/{team.effBlocked}
             </span>
             {team.missing.length > 0 && (
@@ -139,7 +144,7 @@ function TeamRows({
           key={m.uname}
           className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
         >
-          <td className="px-3 py-2 text-xs text-textDim">{i + 1}</td>
+          <td className={`px-3 py-2 text-textDim ${STATS_BODY_TEXT}`}>{i + 1}</td>
           <td className="px-3 py-2">
             <button
               onClick={() => onSelectPlayer(m)}
@@ -151,11 +156,14 @@ function TeamRows({
             <PlayerTagBadge uname={m.uname} overrides={playerTags} className="ml-1.5" />
           </td>
           <td className="px-3 py-2 text-right text-textMuted">{m.correct}</td>
+          {/* The effective total is a *dimmer neutral*, not the stat color at
+              reduced opacity: fading the color itself also fades its contrast,
+              and a "3/5" that has to be read is content, not decoration. */}
           <td className="px-3 py-2 text-right font-medium text-taken">
-            {m.taken}<span className="opacity-60">/{m.effTaken}</span>
+            {m.taken}<span className="text-textDim">/{m.effTaken}</span>
           </td>
           <td className="px-3 py-2 text-right font-medium text-blocked">
-            {m.blocked}<span className="opacity-60">/{m.effBlocked}</span>
+            {m.blocked}<span className="text-textDim">/{m.effBlocked}</span>
           </td>
         </tr>
       ))}
@@ -207,13 +215,13 @@ function AttackModal({ player, onClose }: { player: PlayerStats; onClose: () => 
               </div>
               <div className="ml-[30px] flex flex-wrap gap-1.5">
                 {a.effective && (
-                  <span className="text-xs opacity-60" title="Effective attack">⚡</span>
+                  <span className="text-xs text-textDim" title="Effective attack">⚡</span>
                 )}
                 {a.teams.map((t, ti) => (
                   <span
                     key={ti}
                     className="flex-shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold"
-                    style={{ background: 'rgba(224,82,82,0.1)', color: '#e05252' }}
+                    style={{ background: 'rgba(224,82,82,0.1)', color: '#f27676' }}
                   >
                     vs {t}
                   </span>

@@ -11,6 +11,20 @@ export type SortDir = 'asc' | 'desc';
 export const DENSE_CELL_PAD = 'px-2 py-1.5';
 
 /**
+ * Type scale for the match page's two wide stats tables. Both are dense grids
+ * — the Guess Rate table spans ~20 columns — so the type deliberately sits
+ * below the app's `text-sm` body, but only just: `text-xs` (0.75rem) is a
+ * whole step under it and read as fine print across that many numbers, so both
+ * sizes were nudged up rather than promoted a full step.
+ *
+ * Exported for the same reason as DENSE_CELL_PAD: a table's header and body
+ * sizes are a single decision, and the same two literals repeated across two
+ * files is exactly how they end up out of step.
+ */
+export const STATS_BODY_TEXT = 'text-[0.8rem]';
+export const STATS_HEADER_TEXT = 'text-[0.7rem]';
+
+/**
  * Clickable <th> that toggles ascending/descending sort on click and shows
  * an arrow when it's the active sort column. First click on a new column
  * uses `defaultDir` (numeric stat columns default to descending — highest

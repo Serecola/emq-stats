@@ -7,7 +7,7 @@ import { expectationFromDiff } from '@/lib/expectation';
 import { teamColor } from '@/lib/team-colors';
 import ExpectationBadge from './ExpectationBadge';
 import PlayerTagBadge from './PlayerTagBadge';
-import { SortableHeader, toggleSort, compareValues, DENSE_CELL_PAD, type SortDir } from './SortableTable';
+import { SortableHeader, toggleSort, compareValues, DENSE_CELL_PAD, STATS_BODY_TEXT, STATS_HEADER_TEXT, type SortDir } from './SortableTable';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -95,12 +95,12 @@ function GenericSortableTable<T extends { uname: string }>({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      {/* Dense type: the body is one step down from the app's text-sm and the
-          header one step below that, so ~20 narrow stat columns stay legible
-          without the rows growing taller. */}
-      <table className="w-full border-collapse text-xs" style={{ minWidth }}>
+      {/* Dense type: the body sits just under the app's text-sm and the header
+          just under that, so ~20 narrow stat columns stay legible without the
+          rows growing taller — see STATS_BODY_TEXT / STATS_HEADER_TEXT. */}
+      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`} style={{ minWidth }}>
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
+          <tr className={`border-b border-border bg-surfaceAlt text-left uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}

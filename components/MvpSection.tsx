@@ -1,12 +1,8 @@
 import { teamColor } from '@/lib/team-colors';
-import type { MvpStats } from '@/lib/mvp';
+import { formatMvpSummary, signed, type MvpStats } from '@/lib/mvp';
+import CopyMvpButton from './CopyMvpButton';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
-
-/** "+4.56" / "−1.68" — always signed, two decimals. */
-function signed(n: number): string {
-  return `${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(2)}`;
-}
 
 /**
  * MVP stats block: every team's actual level (Σ of its members' Performance,
@@ -16,15 +12,24 @@ function signed(n: number): string {
 export default function MvpSection({ stats }: { stats: MvpStats }) {
   if (stats.teams.length === 0) return null;
 
+  // Formatted here, on the server, so the button is handed a finished string
+  // and both blocks below stay readable as markup.
+  const summary = formatMvpSummary(stats);
+
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
-          Team Expected vs Actual
-        </h3>
+        {/* The copy covers both blocks — the heading it sits next to is just
+            the one people look for first. */}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-textMuted">
+            Team Expected vs Actual
+          </h3>
+          <CopyMvpButton text={summary} />
+        </div>
         <div className="space-y-1 rounded-lg border border-border bg-surface px-3 py-2.5">
           {stats.teams.map((team) => (
-            <p key={team.teamIndex} className="text-xs leading-relaxed">
+            <p key={team.teamIndex} className="text-sm leading-relaxed">
               {team.members.map((m) => (
                 <span key={m.uname} className="mr-1.5 whitespace-nowrap">
                   <span style={{ color: teamColor(team.teamIndex) }}>{m.uname}</span>{' '}
@@ -46,16 +51,16 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
       </div>
 
       <div>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">MVPs</h3>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-textMuted">MVPs</h3>
         {stats.mvps.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-xs text-textMuted">
+          <p className="rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-sm text-textMuted">
             No player ranks in this roster — add a &quot;(N)&quot; next to each name in the team
             paste to compare players against their rank.
           </p>
         ) : (
           <div className="space-y-1 rounded-lg border border-border bg-surface px-3 py-2.5">
             {stats.mvps.map((p, i) => (
-              <p key={p.uname} className="text-xs leading-relaxed">
+              <p key={p.uname} className="text-sm leading-relaxed">
                 <span className="mr-1">{MEDALS[i]}</span>
                 <span className="font-medium" style={{ color: teamColor(p.teamIndex) }}>
                   {p.uname}

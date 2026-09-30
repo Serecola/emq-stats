@@ -10,8 +10,17 @@
  *
  * Hues are spread wide and deliberately leave out the theme's yellow win accent
  * (`accent`), so no team can ever be mistaken for a winner.
+ *
+ * Every hue is also a *text* color — a player's name is painted in their team's
+ * color in the bracket, the podium, the standings and both stats tables — so the
+ * palette is tuned for contrast, not just for telling teams apart. The floor is
+ * the worst case a name actually lands on: its own roster chip tint, layered
+ * over the winning row's `accent/10` wash inside a bracket card. The three
+ * darkest hues (purple, blue, magenta) are the ones that needed lifting to
+ * clear WCAG AA 4.5:1 there, and the palette tops out at 4.7:1 against that
+ * worst case. Keep them at least this light.
  */
-export const TEAM_COLORS = ['#a78bfa', '#4d8fe0', '#7ac97a', '#c97ac9', '#e08d4d', '#5fd1c9'];
+export const TEAM_COLORS = ['#ab90fb', '#6da8ef', '#7ac97a', '#dd9ade', '#e08d4d', '#5fd1c9'];
 
 /**
  * Color for the team at `teamIndex`, wrapping around for rosters with more

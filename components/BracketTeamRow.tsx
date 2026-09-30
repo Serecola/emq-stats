@@ -6,10 +6,15 @@ import type { Team } from '@/lib/types';
 
 /**
  * How strongly a roster chip is tinted with its own team's color. Kept low so
- * the chip still reads as a chip against the card behind it and the light text
- * on top stays legible.
+ * the chip still reads as a chip against the card behind it — and, more
+ * importantly, because the tint *lightens* the surface the team's color has to
+ * be read against: the name is text on its own chip, so every step of alpha
+ * costs contrast. At 0.12 the weakest team hue still clears WCAG AA 4.5:1 in
+ * the worst case (a winning row, where the card's `accent/10` wash stacks on
+ * top of the chip tint). Raising this needs the palette in
+ * lib/team-colors.ts re-checked, not just eyeballed.
  */
-const TEAM_CHIP_ALPHA = 0.18;
+const TEAM_CHIP_ALPHA = 0.12;
 
 /**
  * How strongly the hovered team's color washes over the cells it plays in. Kept
@@ -37,6 +42,7 @@ export default function BracketTeamRow({
   highlighted,
   onHover,
   score,
+  divider = false,
 }: {
   members: Team;
   teamIndex: number;
@@ -45,6 +51,14 @@ export default function BracketTeamRow({
   onHover: (teamIndex: number) => void;
   /** Right-hand control: a score pill (match page) or score input (admin form). */
   score: ReactNode;
+  /**
+   * Draw a rule under this row. Set it on the FIRST team of a matchup only, so
+   * the pair is split by one line without a trailing rule under the second.
+   * Without it the two rosters run together and, on a card where neither team
+   * won, nothing marks where one team ends and the other begins. `borderSub` is
+   * the same rule the stats tables use between rows.
+   */
+  divider?: boolean;
 }) {
   const win = result === 'win';
   const tie = result === 'tie';
@@ -74,7 +88,7 @@ export default function BracketTeamRow({
       style={highlightStyle}
       className={`flex items-center justify-between gap-2 rounded px-1.5 py-0.5 transition-shadow ${
         win ? 'bg-accent/10' : ''
-      }`}
+      } ${divider ? 'border-b border-borderSub' : ''}`}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
         {members.map((name, i) => (
