@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type CSSProperties } from 'react';
 import {
   compareValues,
+  DENSE_CELL_PAD,
   percentHeat,
   SortableHeader,
   toggleSort,
@@ -53,11 +54,36 @@ const SPLIT_TYPES: { type: string; label: string; title: string }[] = [
 ];
 
 /**
- * How many of each answer type's rates get picked out. The five split columns
- * carry no heat shading — see the column definitions — so this is what makes
- * their leaders visible.
+ * How many rates get a medal. Every rate column in the Erumode block flags its
+ * best three this way rather than shading every cell — see MEDAL_CLASSES.
  */
-const SPLIT_TOP_MARK = 3;
+const MEDAL_COUNT = 3;
+
+/**
+ * Gold, silver, bronze for the best three, as cell classes. Gold is the
+ * palette's own accent, so the top rate reads like every other "best" in the
+ * app; silver and bronze are their own tokens (tailwind.config.ts). Ties are
+ * broken by name, so each medal has exactly one owner.
+ */
+const MEDAL_CLASSES = [
+  'bg-accent/15 font-medium text-accent',
+  'bg-silver/15 font-medium text-silver',
+  'bg-bronze/15 font-medium text-bronze',
+];
+
+/**
+ * The rate columns that medal their best three, each with the accessor that
+ * reads it: the five answer types plus the two rig figures. One list, so the
+ * columns and the medals they draw can never fall out of step.
+ */
+const MEDALLED_RATES: { key: string; value: (row: PlayerRow) => number | undefined }[] = [
+  ...SPLIT_TYPES.map((t) => ({
+    key: t.type,
+    value: (row: PlayerRow) => row.split?.perType[t.type],
+  })),
+  { key: 'rigGr', value: (row) => row.split?.rigGr ?? undefined },
+  { key: 'offlistGr', value: (row) => row.split?.offlistGr ?? undefined },
+];
 
 interface Column {
   key: string;
@@ -70,12 +96,14 @@ interface Column {
   /**
    * Per-cell inline background, for the columns that read better shaded than
    * printed (see percentHeat) — the same tint the admin table gives the same
-   * number, so a green WR means the same thing on both pages.
+   * number, so a green WR means the same thing on both pages. The rate columns
+   * don't use it: they medal their best three instead (see MEDAL_CLASSES).
    */
   cellStyle?: (row: PlayerRow) => CSSProperties | undefined;
   /**
    * Per-cell classes, for the columns that mark individual rows out rather than
-   * shading every figure — the answer-type columns flag their best three.
+   * shading every figure — the rate columns hand gold, silver and bronze to
+   * their best three (see MEDAL_CLASSES).
    */
   cellClassName?: (row: PlayerRow) => string;
   /** Body-cell tooltip that varies per row — the Tours "last 5 of 12" hint. */
@@ -88,13 +116,16 @@ interface Column {
  * ladder figures joined from the admin rows.
  *
  * Every header sorts the list on click, using the same client-side machinery as
- * the admin Player Manager (SortableHeader / toggleSort / compareValues).
- * Nothing is sorted until a header is clicked, so the list still opens in the
- * order the data arrives in, exactly as it did before the columns became
- * clickable.
+ * the admin Player Manager (SortableHeader / toggleSort / compareValues), and
+ * the list opens on Set Rank descending — the highest number down, with anyone
+ * the admin hasn't ranked yet parked at the bottom.
  *
- * Header labels are the short forms (Tours, WR, GR, Comp) because the Erumode
- * view carries a lot of columns; each header's hover title spells the label out.
+ * Header labels are the short forms (Tours, WR, GR, Comp, Off GR) because the
+ * Erumode view carries a lot of columns; each header's hover title spells the
+ * label out, and every header stays on one line. The row is set small on
+ * purpose — 0.65rem headers, xs figures, halved side padding — because fifteen
+ * columns of short numbers leave nothing to gain from generous type, and the
+ * width saved is width the figures get instead.
  */
 export default function PlayerListTable({
   players,
@@ -114,7 +145,7 @@ export default function PlayerListTable({
   /** Query the player name links carry (mode + sub-mode + range). */
   playerQuery: string;
 }) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<string | null>('setRank');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const isErumode = mode === 'Erumode';
 
@@ -130,27 +161,36 @@ export default function PlayerListTable({
     return aggregate.matchesPlayed > 0 ? aggregate.overallGuessRate : null;
   };
 
-  // The answer-type columns flag their leaders instead of shading every cell:
-  // the three best rates in each type. Players with no guesses of a type — or a
-  // 0% there — are skipped, so a type nobody answered correctly marks nobody
-  // rather than handing the top spot to a zero. Ties are broken by name, so the
-  // flagged three stay the same however the list is sorted.
-  const splitLeaders = new Map<string, Set<string>>();
+  // Each rate's best three take gold, silver and bronze instead of the column
+  // being shaded: with five answer types plus two rig figures side by side,
+  // gradients read as one wall of colour, and the top of a column is what
+  // anyone actually looks for. Players with no guesses of a rate — or a 0%
+  // there — are skipped, so a rate nobody answered correctly medals nobody
+  // rather than handing gold to a zero. Ties are broken by name, so a medal
+  // stays on the same player however the list is sorted.
+  const medals = new Map<string, Map<string, string>>();
   if (isErumode) {
-    for (const t of SPLIT_TYPES) {
+    for (const rate of MEDALLED_RATES) {
       const ranked = players
-        .filter((r) => (r.split?.perType[t.type] ?? 0) > 0)
+        .filter((r) => (rate.value(r) ?? 0) > 0)
         .sort(
           (a, b) =>
-            (b.split?.perType[t.type] ?? 0) - (a.split?.perType[t.type] ?? 0) ||
+            (rate.value(b) ?? 0) - (rate.value(a) ?? 0) ||
             a.player.uname.localeCompare(b.player.uname)
         );
-      splitLeaders.set(
-        t.type,
-        new Set(ranked.slice(0, SPLIT_TOP_MARK).map((r) => r.player.uname))
+      medals.set(
+        rate.key,
+        new Map(
+          ranked
+            .slice(0, MEDAL_COUNT)
+            .map((r, i) => [r.player.uname, MEDAL_CLASSES[i]] as [string, string])
+        )
       );
     }
   }
+
+  /** The medal this player earned in this rate column, as a cell class. */
+  const medalFor = (key: string, row: PlayerRow) => medals.get(key)?.get(row.player.uname) ?? '';
 
   const columns: Column[] = [
     {
@@ -283,14 +323,11 @@ export default function PlayerListTable({
       ...SPLIT_TYPES.map<Column>((t) => ({
         key: `split-${t.type}`,
         label: t.label,
-        title: `${t.title} — % of guesses of this answer type that were correct (the three best are marked)`,
+        title: `${t.title} — % of guesses of this answer type that were correct (gold, silver and bronze go to the best three)`,
         accessor: (r) => r.split?.perType[t.type] ?? missing(),
-        // No heat shading here: five shaded columns side by side read as one
-        // wall of colour, so each type only marks its own best three rates.
-        cellClassName: (r) =>
-          splitLeaders.get(t.type)?.has(r.player.uname)
-            ? 'bg-accent/15 font-medium text-accent'
-            : '',
+        // No heat here: the medal says more than a shade across five columns
+        // that would otherwise all look alike.
+        cellClassName: (r) => medalFor(t.type, r),
         render: (r) => {
           const value = r.split?.perType[t.type];
           return value === undefined ? <span className="text-textDim">—</span> : pct(value);
@@ -309,9 +346,11 @@ export default function PlayerListTable({
       {
         key: 'rigGr',
         label: 'Rig GR',
-        title: '% of on-list (rig) guesses that were correct',
+        title: '% of on-list (rig) guesses that were correct (gold, silver and bronze go to the best three)',
         accessor: (r) => r.split?.rigGr ?? missing(),
-        cellStyle: (r) => percentHeat(r.split?.rigGr ?? null),
+        // Medalled like the answer types, not shaded: it is the same kind of
+        // number and should be read the same way.
+        cellClassName: (r) => medalFor('rigGr', r),
         render: (r) => {
           const value = r.split?.rigGr;
           return value == null ? <span className="text-textDim">—</span> : pct(value);
@@ -319,10 +358,12 @@ export default function PlayerListTable({
       },
       {
         key: 'offlistGr',
-        label: 'Offlist GR',
-        title: '% of off-list guesses that were correct',
+        // Short enough to sit on one line beside Rig GR; the hover title still
+        // spells the metric out.
+        label: 'Off GR',
+        title: '% of off-list guesses that were correct (gold, silver and bronze go to the best three)',
         accessor: (r) => r.split?.offlistGr ?? missing(),
-        cellStyle: (r) => percentHeat(r.split?.offlistGr ?? null),
+        cellClassName: (r) => medalFor('offlistGr', r),
         render: (r) => {
           const value = r.split?.offlistGr;
           return value == null ? <span className="text-textDim">—</span> : pct(value);
@@ -368,8 +409,8 @@ export default function PlayerListTable({
     toggleSort(key, sortKey, sortDir, key === 'uname' ? 'asc' : 'desc', setSortKey, setSortDir);
   }
 
-  // No column has been clicked yet: the list is shown as it arrives, so opening
-  // the page looks exactly like it did before the headers became clickable.
+  // The table opens on Set Rank descending (see the state above), so this only
+  // has to re-sort when a header is clicked.
   const activeColumn = columns.find((c) => c.key === sortKey) ?? null;
   const sorted =
     sortKey === null || !activeColumn
@@ -380,16 +421,19 @@ export default function PlayerListTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      {/* The Erumode column set is wide — five answer types plus the rig figures —
-          so the table keeps a minimum width and scrolls rather than squeezing the
-          numbers, and with them their heat shading, past reading size. */}
+      {/* The Erumode column set is wide — five answer types plus the rig figures
+          — but the type inside it is small (see the class doc), so the table
+          only holds a floor under that: below it the numbers and their heat
+          shading would stop being readable. Above it the columns are free to
+          shrink to their content, which is what keeps the row from scrolling on
+          a laptop screen. */}
       <table
-        className={`w-full border-collapse text-sm ${
-          isErumode ? 'min-w-[1120px]' : 'min-w-[760px]'
+        className={`w-full border-collapse text-xs ${
+          isErumode ? 'min-w-[960px]' : 'min-w-[620px]'
         }`}
       >
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}
@@ -400,6 +444,7 @@ export default function PlayerListTable({
                 onClick={onSort}
                 title={c.title}
                 align={c.key === 'uname' ? 'left' : 'right'}
+                pad={DENSE_CELL_PAD}
               />
             ))}
           </tr>
@@ -415,7 +460,7 @@ export default function PlayerListTable({
                   key={c.key}
                   style={c.cellStyle?.(r)}
                   title={c.cellTitle?.(r)}
-                  className={`px-3 py-2 ${
+                  className={`${DENSE_CELL_PAD} ${
                     c.key === 'uname'
                       ? 'whitespace-nowrap font-medium'
                       : `text-right text-textMuted ${c.className ?? ''} ${c.cellClassName?.(r) ?? ''}`

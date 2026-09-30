@@ -17,6 +17,12 @@ const config: Config = {
         taken: '#e05252',
         blocked: '#4d8fe0',
         accent: '#e0b152',
+        // The other two medals the players list hands out. Gold is `accent`
+        // (#e0b152) — the colour the app already uses for a "best" — so only
+        // silver and bronze need tokens of their own: bright enough to read as
+        // metal on the dark surface, dim enough not to outshine the gold.
+        silver: '#aeb4c0',
+        bronze: '#c07a4e',
       },
     },
   },

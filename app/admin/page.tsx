@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { listMatchSummaries } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
 import DeleteMatchButton from '@/components/DeleteMatchButton';
+import ExportAllButton from '@/components/ExportAllButton';
 import LogoutButton from '@/components/LogoutButton';
 import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
+import { withBasePath } from '@/lib/base-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +34,14 @@ export default async function AdminPage({
           >
             + New tournament
           </Link>
+          {/* Every stored upload in one archive — all of it, not just what the
+              filter below is showing — so it asks first. A plain <a> rather than
+              a <Link>: the route answers with a file, and the basePath is added
+              by hand for the same reason the login form's fetch is. */}
+          <ExportAllButton
+            tournaments={allMatches.length}
+            files={allMatches.reduce((n, m) => n + m.fileCount, 0)}
+          />
           <LogoutButton />
         </div>
       </div>
@@ -71,6 +81,16 @@ export default async function AdminPage({
                 <Link href={`/matches/${m.id}`} className="text-textSub hover:text-text">
                   Player view
                 </Link>
+                {/* One tournament's own archive, for pulling a single set of
+                    exports without exporting the lot. Same route, same gate —
+                    see the header button for why it's an <a>. */}
+                <a
+                  href={withBasePath(`/api/admin/export?id=${encodeURIComponent(m.id)}`)}
+                  download
+                  className="text-textSub hover:text-text"
+                >
+                  Export
+                </a>
                 <DeleteMatchButton id={m.id} title={m.title} />
               </div>
             </div>

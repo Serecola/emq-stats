@@ -9,7 +9,8 @@ Next.js app for tracking EMQ team-battle attack/block stats. Two sections:
 - **Admin** (`/admin`) — password-protected, split into two sections:
   - **Tour Manager** (`/admin`) — create/edit/delete tournaments: set the team
     rosters and paste or upload the raw EMQ song-history JSON export(s) for
-    that match.
+    that match, and export every stored export back out as an archive (see
+    [Backing up and exporting the data](#backing-up-and-exporting-the-data)).
   - **Player Manager** (`/admin/players`) — per-gamemode ladder management:
     assign each player's **Set Rank** and compare it against their computed
     **Expected Rank** and promotion **Expectation**; a second tab tags
@@ -164,7 +165,57 @@ proxy's limits apply on top of the app's:
   Verify from outside with `curl -sSI https://<domain>/emq-stats/admin`: the
   `Location` should be `/emq-stats/admin/login?from=%2Fadmin` (a path the
   browser resolves against the domain, as in this repo's Next 14.2.35), or at
-  worst an absolute URL naming that same domain — never `localhost`.
+  worst an absolute URL naming that same domain — never `localhost`. The live
+  host config (this location, the HTTP → HTTPS redirect, the certbot SSL lines)
+  lives on the server, not in this repo — the snippet above is what it must
+  contain.
+
+## Backing up and exporting the data
+
+Every uploaded game export lives in the database — one `matches` row per
+tournament, the raw JSON included — so "copy the database" has been the whole
+backup story. **Export all JSONs** at the top of the Tour Manager, or **Export**
+on a single tournament's row, downloads it all as one archive:
+
+```
+emq-stats-export-2026-09-30.zip
+├─ manifest.json
+└─ tournaments/
+   └─ 2026-12-31-na-erumode-normal-winter-cup--9f3a2b/
+      ├─ r1m0.json
+      └─ …
+```
+
+- One folder per tournament, `<date>-<region>-<mode>-<sub-mode>-<name>--<match
+  id>`, so the archive mirrors how a tournament is titled and sorts
+  chronologically. The id is what makes the path unique (there is more than one
+  "Winter Cup") and keeps it that way if the tournament is renamed later.
+- One JSON per upload, named for the fixture it belongs to: round and match as
+  the bracket shows them, then the two teams that played —
+  `r1m2-hyther-vs-serecola.json`, which sorts into bracket order and says who was
+  in the game without opening anything. A file the bracket couldn't place (no
+  slot, and the teams in its JSON don't map onto one fixture) falls back to the
+  game's own export name, which carries the play timestamp.
+- `manifest.json` is the half a pile of exports can't give you: the roster, the
+  entered scores, the renames, the per-player ranks, the slot assignments and the
+  archive version, which is everything a restore needs.
+
+The exports are re-serialised from the parsed JSON the app holds
+(`JSON.stringify(data, null, 2)`), so they are the same data in tidier formatting
+rather than byte-identical to the file that was pasted. The manifest's scores are
+the *effective* ones — a game scored on one side only reads 0 for the other, the
+same rule the table applies (`withAssumedZeroScores`) — so an archive reproduces
+what the app showed and what the stats were computed from.
+
+`GET /api/admin/export?id=<match id>` exports one tournament and
+`?format=json` skips the archive, returning the same content as a single JSON
+document for scripting. The whole route sits behind the admin session cookie
+(`middleware.ts` matches `/api/admin/:path*`) and answers `Cache-Control:
+private, no-store`, so nothing between the proxy and the browser holds on to an
+archive of every upload. Worth running before a risky edit or a database
+migration. The archive is assembled by `lib/zip.ts` — a hand-rolled deflate ZIP
+over Node's own `zlib`, so no new dependency — and the layout and manifest come
+from `lib/export.ts`, which an importer would read the same way.
 
 ## Searching tournaments by player
 
@@ -281,15 +332,20 @@ admin-only — and a figure with nothing to compute shows `—` rather than a gu
 Heading it **Exp. Rank** keeps the row narrow; the hover title still spells the
 figure out.
 
-Header labels are the short forms — **Tours / WR / GR / Comp** — for the same
-reason, and every one of them is a sort key (`SortableHeader` / `toggleSort` /
-`compareValues`, the machinery the admin tables use). Nothing is sorted until a
-header is clicked, so the list opens in the order the data arrives in, and a
-cell with no figure sorts last in *both* directions instead of taking a 0 it
-never earned.
+Header labels are the short forms — **Tours / WR / GR / Comp / Off GR** — for
+the same reason, and every one of them is a sort key (`SortableHeader` /
+`toggleSort` / `compareValues`, the machinery the admin tables use). The list
+opens on **Set Rank descending — the highest number first**, anyone the admin
+hasn't ranked yet parked at the bottom — and a cell with no figure sorts last in
+*both* directions instead of taking a 0 it never earned. The row is
+set compactly on top of that: every header on one line, 0.65rem, xs figures,
+half-width gutters (`DENSE_CELL_PAD`). Fifteen columns of short numbers gain
+nothing from generous type, and the shortened labels do the width saving that a
+second header line would otherwise have to do — which is what keeps the Erumode
+table from scrolling on a laptop.
 
 Erumode selections gain the split guess-rate columns: **VN / Artist / Song /
-Dev / Comp**, **Avg Rig**, **Rig GR%** and **Offlist GR%**, pooled over
+Dev / Comp**, **Avg Rig**, **Rig GR%** and **Off GR%**, pooled over
 the same range as the rest of the row (`erumodeSplitStats` in
 `lib/player-stats.ts`). Everything is summed from raw counts and divided once —
 per-type rates weighted by each tournament's song count and counting only
@@ -300,15 +356,18 @@ would compute over the same tournaments. Avg Rig is the mean on-list (rig)
 guess count per tournament in view; the other three are percentages, `—` while
 the range has nothing to divide.
 
-These five answer-type columns are the one place `/players` doesn't shade its
-percentages: side by side, five gradients read as a single wall of colour, so
-each type picks out its own best three rates (`SPLIT_TOP_MARK` in
-`components/PlayerListTable.tsx`) in accent gold instead. 0% and players with no
-guesses of that type are skipped, so a type nobody answered correctly marks
-nobody rather than handing the top spot to a zero; the marked three are computed
-from the unsorted rows, so sorting the list never moves the highlight. Every
-other percentage in the table — WR, GR, Rig GR, Offlist GR — keeps the
-`percentHeat` gradient.
+Every rate column in the Erumode block — the five answer types plus **Rig GR**
+and **Off GR** — medals its best three rather than shading them all: gold to the
+highest, silver to the next, bronze to the third (`MEDAL_CLASSES` /
+`MEDAL_COUNT` in `components/PlayerListTable.tsx`; gold is the palette's
+`accent`, silver and bronze are their own tokens in `tailwind.config.ts`). Seven
+shaded columns side by side read as a single wall of colour, and the top of a
+column is the part anyone actually looks for. 0% and players with no guesses of
+that rate are skipped, so a rate nobody answered correctly medals nobody rather
+than handing gold to a zero; ties are broken by name and the medals are computed
+from the unsorted rows, so sorting the list never moves one. Winrate and Guess
+Rate keep the `percentHeat` gradient — the two figures the admin table shades
+the same way.
 
 ### Player Tags tab
 
