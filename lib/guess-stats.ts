@@ -3,8 +3,10 @@ import type { Match, Mode, Submode } from './types';
 
 // Order matters — matches AnsType in the original emq-stats.py script.
 // "Mst" is the main title guess (always present); the rest only show up
-// in Erumode (self-answer) exports.
-const ANSWER_TYPES = [
+// in Erumode (self-answer) exports. Exported so anything else that has to
+// read per-answer-type answers (E.g. lib/synergy.ts) walks the same keys in
+// the same order rather than keeping a second copy of this list.
+export const ANSWER_TYPES = [
   'Mst',
   'A',
   'Mt',

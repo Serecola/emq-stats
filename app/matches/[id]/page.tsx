@@ -16,11 +16,13 @@ import {
 } from '@/lib/schedule';
 import { computeMatchResults } from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
+import { computeSynergyStats, type SynergyStats } from '@/lib/synergy';
 import { hasAdminSession } from '@/lib/admin-session';
 import StatsTable from '@/components/StatsTable';
 import GuessRateTable from '@/components/GuessRateTable';
 import ResultsSection from '@/components/ResultsSection';
 import MvpSection from '@/components/MvpSection';
+import SynergySection from '@/components/SynergySection';
 import RoundRobinGrid from '@/components/RoundRobinGrid';
 import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
 import BackToTop from '@/components/BackToTop';
@@ -140,16 +142,30 @@ export default async function MatchPage({
     }
   }
 
+  // Team synergy (who lands whose list) reads the same scoped files as the
+  // tables above, so it narrows with the round/game selector too. Computed for
+  // both modes — only the Attacks & Blocks table below is NGMC-only.
+  let synergyStats: SynergyStats | null = null;
+  let synergyError: unknown = null;
+  try {
+    synergyStats = computeSynergyStats({ ...scopedMatch, renames });
+  } catch (err) {
+    synergyError = err;
+  }
+
   // Jump targets for the left-hand rail (MatchSectionNav). Listed in the order
   // they appear and gated on the same conditions that render each block, so a
   // link never points at a section that isn't on the page — the NGMC-only
-  // Attacks & Blocks table is conditional. The MVP block sits inside Results
-  // and isn't listed: it's part of that section, not a destination of its own.
+  // Attacks & Blocks table and the synergy block (which hides itself when no
+  // song in scope produced a chance) are both conditional. The MVP block sits
+  // inside Results and isn't listed: it's part of that section, not a
+  // destination of its own.
   const jumpSections: JumpSection[] = [
     { id: 'bracket', label: 'Bracket' },
     { id: 'results', label: 'Results' },
     { id: 'stats', label: 'Stats' },
     ...(isNgmc && matchStats ? [{ id: 'attacks-blocks', label: 'Attacks & Blocks', nested: true }] : []),
+    ...(synergyStats?.hasData ? [{ id: 'team-synergy', label: 'Team Synergy', nested: true }] : []),
   ];
 
   return (
@@ -254,6 +270,17 @@ export default async function MatchPage({
               <StatsTable stats={matchStats} playerTags={playerTags} />
             </div>
           ) : null)}
+
+        {synergyError ? (
+          <ErrorBox label="Team synergy" err={synergyError} />
+        ) : synergyStats?.hasData ? (
+          <div id="team-synergy" className="scroll-mt-16">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-textMuted">
+              Team Synergy
+            </h3>
+            <SynergySection stats={synergyStats} playerTags={playerTags} />
+          </div>
+        ) : null}
       </section>
     </div>
   );
