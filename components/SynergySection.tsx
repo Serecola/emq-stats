@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import { Fragment, useState } from 'react';
 import { teamColor } from '@/lib/team-colors';
-import type { SynergyMatchup, SynergyMember, SynergyRead, SynergyStats, SynergyTeam } from '@/lib/synergy';
+import type { SynergyMember, SynergyRead, SynergyStats, SynergyTeam } from '@/lib/synergy';
 import type { PlayerTag } from '@/lib/types';
 import {
   DENSE_CELL_PAD,
@@ -26,12 +26,6 @@ const KEY_OF: Record<SortKey, (m: SynergyMember) => number | string> = {
   songs: (m) => m.songs,
 };
 
-/**
- * Only the composite gets a verdict colour. The four raw reads are left in the
- * neutral text ramp on purpose: they're descriptive, and a red/amber/green on
- * each of them would be four more scores competing for an interpretation the
- * page already states once, in the Readability column.
- */
 function heat(rate: number): string {
   if (rate >= 50) return 'text-[#f27676]';
   if (rate >= 25) return 'text-accent';
@@ -67,10 +61,10 @@ function TeamLabel({ team }: { team: SynergyTeam }) {
 }
 
 /**
- * Per-team summary, ranked toughest-lists-first. Ally synergy and the two
- * cross-team columns are each shown as a rate over the pooled counts behind
- * it; Readability is the mean of the first and third, and is the only column
- * that claims a direction is good.
+ * Per-team summary, ranked toughest-lists-first. Ally Offlist, Enemy Offlist
+ * and Enemy Snipe are each shown as a rate over the pooled counts behind it;
+ * List Difficulty is the mean of Ally Offlist and Enemy Snipe, and is the only
+ * column that claims a direction is good.
  */
 function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
   return (
@@ -82,27 +76,27 @@ function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
             <th className={`${DENSE_CELL_PAD} text-left font-medium`}>Team</th>
             <th
               className={`${DENSE_CELL_PAD} text-right font-medium`}
-              title="Ally synergy — songs this team's members correctly guessed that were on a teammate's list, over the teammate on-list songs they were present for. Higher means the team duplicates its own coverage."
+              title="Songs this team correctly guessed that were on a teammate's list."
             >
-              Ally synergy
+              Ally Offlist
             </th>
             <th
               className={`${DENSE_CELL_PAD} text-right font-medium`}
-              title="Enemy reads — songs this team's members correctly guessed that were on another team's list."
+              title="Songs this team's members correctly guessed that were on another team's list."
             >
-              Enemy reads
+              Enemy Offlist
             </th>
             <th
               className={`${DENSE_CELL_PAD} text-right font-medium`}
-              title="Read by enemies — the same events seen from the other side: songs on this team's lists that a member of another team got right."
+              title="Songs on this team's lists that a member of another team got right."
             >
-              Read by enemies
+              Enemy Snipe
             </th>
             <th
               className={`${DENSE_CELL_PAD} text-right font-medium`}
-              title="Readability — the mean of Ally synergy and Read by enemies: how findable this team's coverage is, inside and out. Lower is a harder lineup to read."
+              title="% of how free the team's list is for both ally and enemy teams."
             >
-              Readability
+              List Difficulty
             </th>
           </tr>
         </thead>
@@ -131,11 +125,11 @@ function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
                 <ReadValue read={team.readByEnemies} />
               </td>
               <td className={`${DENSE_CELL_PAD} text-right`}>
-                {team.readability === null ? (
+                {team.listdifficulty === null ? (
                   <span className="text-textDim">—</span>
                 ) : (
-                  <span className={`font-medium ${heat(team.readability)}`}>
-                    {team.readability.toFixed(1)}%
+                  <span className={`font-medium ${heat(team.listdifficulty)}`}>
+                    {team.listdifficulty.toFixed(1)}%
                   </span>
                 )}
               </td>
@@ -197,11 +191,11 @@ function MemberReadsTable({
           <tr className={`border-b border-border bg-surfaceAlt uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
             <th className={`${DENSE_CELL_PAD} w-8 text-left font-medium`}>#</th>
             <th className={`${DENSE_CELL_PAD} text-left font-medium`}>Player</th>
-            {header('Ally read', 'ally', 'Songs this player correctly guessed that were on a teammate’s list, over the teammate on-list songs they were present for')}
-            {header('Enemy read', 'enemy', 'Songs this player correctly guessed that were on an opposing team’s list')}
-            {header('Read by teammates', 'readAlly', 'Songs on this player’s list their own team got right')}
-            {header('Read by enemies', 'readEnemy', 'Songs on this player’s list the other teams got right')}
-            {header('Songs', 'songs', 'Songs this player appears in — the ceiling on any of their chances')}
+            {header('Ally Offlist', 'ally', 'Songs this player correctly guessed that were on a teammate’s list.')}
+            {header('Enemy Offlist', 'enemy', 'Songs this player correctly guessed that were on an enemy team’s list')}
+            {header('Team Snipe', 'readAlly', 'Songs on this player’s list their own team got right')}
+            {header('Enemy Snipe', 'readEnemy', 'Songs on this team’s lists that a member of another team got right.')}
+            {header('Songs', 'songs', 'Songs this player appears in')}
           </tr>
         </thead>
         <tbody>
@@ -236,8 +230,11 @@ function MemberReadsTable({
                         <span className="mt-0.5 block text-[0.68rem] text-textDim">
                           {m.allyPartners
                             .filter((p) => p.read.chances > 0)
-                            .map((p) => `→ ${p.uname} ${p.read.rate.toFixed(1)}% (${p.read.hits}/${p.read.chances})`)
-                            .join(' · ')}
+                            .map((p) => (
+                              <span key={p.uname} className="block whitespace-nowrap">
+                                vs {p.uname} {p.read.rate.toFixed(1)}% ({p.read.hits}/{p.read.chances})
+                              </span>
+                            ))}
                         </span>
                       )}
                     </td>
@@ -245,9 +242,11 @@ function MemberReadsTable({
                       <ReadValue read={m.vsEnemy} />
                       {m.enemyTeams.length > 0 && (
                         <span className="mt-0.5 block text-[0.68rem] text-textDim">
-                          {m.enemyTeams
-                            .map((e) => `vs ${teamLabels.get(e.teamIndex) ?? `Team ${e.teamIndex + 1}`} ${e.read.rate.toFixed(1)}% (${e.read.hits}/${e.read.chances})`)
-                            .join(' · ')}
+                          {m.enemyTeams.map((e) => (
+                            <span key={e.teamIndex} className="block whitespace-nowrap">
+                              vs {teamLabels.get(e.teamIndex) ?? `Team ${e.teamIndex + 1}`} {e.read.rate.toFixed(1)}% ({e.read.hits}/{e.read.chances})
+                            </span>
+                          ))}
                         </span>
                       )}
                     </td>
@@ -269,72 +268,59 @@ function MemberReadsTable({
   );
 }
 /**
- * Cross-team reads as a square: rows read, columns are read. A row cell is
- * that team landing the column team's lists — which is also, read the other
- * way, how exposed the column team is to that row.
- *
- * The per-member split behind each cell rides on the cell's tooltip rather
- * than in the grid: a 4-team tournament has 12 cells here and the same 12
- * breakdowns one screen further up in the member table, so putting them in both
- * would say the same thing twice.
+ * The two readings of the same data, switched by a segmented control: the
+ * per-team summary answers "which lineup is readable" while only the per-member
+ * rows answer "who is doing the reading". They sit behind a toggle rather than
+ * stacked so the section stays one screen tall, and the subtitle tracks the
+ * active view.
  */
-function MatchupMatrix({ teams, matchups }: { teams: SynergyTeam[]; matchups: SynergyMatchup[] }) {
-  const cell = new Map<string, SynergyMatchup>();
-  for (const m of matchups) cell.set(`${m.teamIndex}:${m.againstTeamIndex}`, m);
+function SynergyViews({
+  teams,
+  teamLabels,
+  playerTags,
+}: {
+  teams: SynergyTeam[];
+  teamLabels: Map<number, string>;
+  playerTags?: Record<string, PlayerTag>;
+}) {
+  const [view, setView] = useState<'team' | 'member'>('team');
 
-  const tooltip = (m: SynergyMatchup | undefined): string | undefined =>
-    m && m.members.length > 0
-      ? m.members.map((x) => `${x.uname} ${x.read.rate.toFixed(1)}% (${x.read.hits}/${x.read.chances})`).join(' · ')
-      : undefined;
+  const options = [
+    { id: 'team', label: 'Teams', title: 'Per-team summary, ranked toughest lists first' },
+    { id: 'member', label: 'Members', title: 'Per-member breakdown of who reads whose list' },
+  ] as const;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
-        <thead>
-          <tr className={`border-b border-border bg-surfaceAlt uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
-            <th className={`${DENSE_CELL_PAD} text-left font-medium`}>
-              Reads <span className="font-normal normal-case tracking-normal">↓</span> / read{' '}
-              <span className="font-normal normal-case tracking-normal">→</span>
-            </th>
-            {teams.map((owner) => (
-              <th
-                key={owner.teamIndex}
-                className={`${DENSE_CELL_PAD} text-right font-medium`}
-                title={`${owner.label}'s team — how much of their lists each team found`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: teamColor(owner.teamIndex) }} />
-                  {owner.label}
-                </span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {teams.map((reader) => (
-            <tr key={reader.teamIndex} className="border-b border-borderSub last:border-b-0">
-              <th scope="row" className={`${DENSE_CELL_PAD} text-left font-medium`}>
-                <TeamLabel team={reader} />
-              </th>
-              {teams.map((owner) => {
-                if (reader.teamIndex === owner.teamIndex) {
-                  return (
-                    <td key={owner.teamIndex} className={`${DENSE_CELL_PAD} text-right text-textDim`}>
-                      —
-                    </td>
-                  );
-                }
-                const m = cell.get(`${reader.teamIndex}:${owner.teamIndex}`);
-                return (
-                  <td key={owner.teamIndex} className={`${DENSE_CELL_PAD} text-right`} title={tooltip(m)}>
-                    <ReadValue read={m?.read ?? { chances: 0, hits: 0, rate: 0 }} />
-                  </td>
-                );
-              })}
-            </tr>
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div
+          role="group"
+          aria-label="Team synergy view"
+          className="flex overflow-hidden rounded-md border border-border text-xs font-medium"
+        >
+          {options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              title={option.title}
+              aria-pressed={view === option.id}
+              onClick={() => setView(option.id)}
+              className={`px-2.5 py-1 transition-colors ${
+                view === option.id
+                  ? 'bg-accent text-bg'
+                  : 'bg-surfaceAlt text-textMuted hover:text-text'
+              }`}
+            >
+              {option.label}
+            </button>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      {view === 'team' ? (
+        <TeamSummaryTable teams={teams} />
+      ) : (
+        <MemberReadsTable teams={teams} teamLabels={teamLabels} playerTags={playerTags} />
+      )}
     </div>
   );
 }
@@ -343,10 +329,9 @@ function MatchupMatrix({ teams, matchups }: { teams: SynergyTeam[]; matchups: Sy
  * Team Synergy block for the match page's Stats section: how well each member
  * hits their teammate's list and the enemy team's.
  *
- * Three layers, coarsest first — team, member, then the team-vs-team square —
- * because the pooled number answers "which lineup is readable" while only the
- * per-member rows answer "who is doing the reading", and the matchup square is
- * the only view where a specific opponent's name is the row.
+ * Two layers, coarsest first — team, then member — behind a toggle, because the
+ * pooled number answers "which lineup is readable" while only the per-member
+ * rows answer "who is doing the reading".
  *
  * Renders nothing when no song in scope produced a chance (an Erumode room
  * asked only answer types nobody had a list for, say) rather than a table of
@@ -366,34 +351,8 @@ export default function SynergySection({
 
   return (
     <div className="space-y-4">
-      <p className="max-w-3xl text-xs leading-relaxed text-textMuted">
-        A <span className="text-textSub">chance</span> is a song that was on somebody&apos;s
-        pre-made list, asked while the reader was in the room; a <span className="text-textSub">hit</span>{' '}
-        is a chance the reader also got right. Every rate below is shown over the counts it came from.
-        A player is never their own reader here — their own list&apos;s guess rate is Rig GR in the table
-        above.
-      </p>
 
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
-          Team Synergy <span className="font-normal normal-case tracking-normal text-textDim">· ranked toughest lists first</span>
-        </h4>
-        <TeamSummaryTable teams={stats.teams} />
-      </div>
-
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
-          Member Reads <span className="font-normal normal-case tracking-normal text-textDim">· what each player hits on other people&apos;s lists</span>
-        </h4>
-        <MemberReadsTable teams={stats.teams} teamLabels={teamLabels} playerTags={playerTags} />
-      </div>
-
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-textMuted">
-          Cross-Team Reads <span className="font-normal normal-case tracking-normal text-textDim">· hover a cell for the per-member split</span>
-        </h4>
-        <MatchupMatrix teams={stats.teams} matchups={stats.matchups} />
-      </div>
+      <SynergyViews teams={stats.teams} teamLabels={teamLabels} playerTags={playerTags} />
     </div>
   );
 }

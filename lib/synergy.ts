@@ -81,24 +81,11 @@ export interface SynergyTeam {
    * (opponents finding the songs). Null when neither half has any evidence,
    * rather than showing a real-looking 0% for a team we know nothing about.
    */
-  readability: number | null;
-}
-
-export interface SynergyMatchup {
-  /** index of the team doing the reading */
-  teamIndex: number;
-  /** index of the team whose lists are being read (never the same team) */
-  againstTeamIndex: number;
-  read: SynergyRead;
-  /** the reading team's own split of that, one entry per member with evidence */
-  members: { uname: string; read: SynergyRead }[];
+  listdifficulty: number | null;
 }
 
 export interface SynergyStats {
-  /** ranked toughest-lists-first (see `readability`) */
   teams: SynergyTeam[];
-  /** every ordered team pair, reader first — the square the UI draws */
-  matchups: SynergyMatchup[];
   totalSongs: number;
   /** false when no song produced a single chance, i.e. nothing to show */
   hasData: boolean;
@@ -344,7 +331,7 @@ const finalize = (a: MemberAccum): SynergyMember => ({
       allyRead,
       enemyRead,
       readByEnemies,
-      readability: parts.length ? parts.reduce((s, r) => s + r.rate, 0) / parts.length : null,
+      listdifficulty: parts.length ? parts.reduce((s, r) => s + r.rate, 0) / parts.length : null,
     };
   });
 
@@ -352,34 +339,10 @@ const finalize = (a: MemberAccum): SynergyMember => ({
   // exposure is the only ordering here that means anything, and a team we have
   // no evidence for can't be ranked at all, so it sorts last.
   teams.sort(
-    (a, b) => (a.readability ?? Infinity) - (b.readability ?? Infinity) || a.label.localeCompare(b.label)
+    (a, b) => (a.listdifficulty ?? Infinity) - (b.listdifficulty ?? Infinity) || a.label.localeCompare(b.label)
   );
-
-  // Every ordered team pair, reader first: the square the UI draws. The
-  // transpose isn't redundant — "A reads B" is also B's exposure to A — which
-  // is why both directions are built rather than one plus a mirror.
-  const matchups: SynergyMatchup[] = [];
-  for (const reader of teams) {
-    for (const owner of teams) {
-      if (reader.teamIndex === owner.teamIndex) continue;
-      const members = reader.members
-        .map((m) => {
-          const against = m.enemyTeams.find((e) => e.teamIndex === owner.teamIndex);
-          return against ? { uname: m.uname, read: against.read } : null;
-        })
-        .filter((m): m is { uname: string; read: SynergyRead } => m !== null);
-      const chances = members.reduce((s, m) => s + m.read.chances, 0);
-      const hits = members.reduce((s, m) => s + m.read.hits, 0);
-      matchups.push({
-        teamIndex: reader.teamIndex,
-        againstTeamIndex: owner.teamIndex,
-        read: read(chances, hits),
-        members,
-      });
-    }
-  }
 
   const hasData = teams.some((t) => t.allyRead.chances > 0 || t.readByEnemies.chances > 0);
 
-  return { teams, matchups, totalSongs, hasData };
+  return { teams, totalSongs, hasData };
 }
