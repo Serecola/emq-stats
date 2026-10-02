@@ -35,6 +35,7 @@ export default function MatchForm({
   existing,
   savedRanks,
   expectedRanks,
+  vnExpectedRanks,
 }: {
   existing?: Match;
   // The admin's Set Ranks from the Player Manager, keyed mode -> sub-mode ->
@@ -46,6 +47,11 @@ export default function MatchForm({
   // autodrafter's "Expected (last 5)" source, with Set Ranks as the fallback
   // for players who have no recent games.
   expectedRanks?: SetRanks;
+  // VN-only Expected Ranks from each player's last 5 tournaments (same
+  // keying) — the autodrafter's "Expected (VN Only)" source. Unlike the
+  // combined source there is no Set Rank fallback: players with no VN data
+  // are treated as unranked, like the old Pasted-table source.
+  vnExpectedRanks?: SetRanks;
 }) {
   const router = useRouter();
   const [name, setName] = useState(existing?.name ?? '');
@@ -623,6 +629,7 @@ export default function MatchForm({
         <TeamDrafter
           savedRanks={savedRanksFor(savedRanks ?? {}, mode, submode)}
           expectedRanks={savedRanksFor(expectedRanks ?? {}, mode, submode)}
+          vnExpectedRanks={savedRanksFor(vnExpectedRanks ?? {}, mode, submode)}
           savedRanksLabel={`${mode} ${submode}`}
           onApply={(teams, ranks) => setTeamsText(teamsToBlob(teams, ranks))}
         />

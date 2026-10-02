@@ -239,6 +239,10 @@ export default async function AdminPlayersPage({
             compares the two (Expected Rank − Set Rank). Only {selection} games count
             towards either — another sub-mode is a different game, so its results are
             never used as a stand-in.
+            {mode === 'Erumode' && submode === 'Normal' && (
+              <> VN GR is the songs-weighted average VN Guess Rate over the same range, and
+                VN Expected Rank is Expected Rank computed from VN-only answers alone.</>
+            )}
           </p>
         </>
       )}

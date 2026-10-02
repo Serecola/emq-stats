@@ -58,6 +58,12 @@ export default function PlayerRankTable({
   const [sortKey, setSortKey] = useState<string | null>('expectedRank');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
+  // VN columns for Erumode Normal — always visible, sitting right after
+  // Expectation so the row reads ... | Expectation | VN GR | VN Expected
+  // Rank. Both are Mst-only readings of the same range, and neither gets an
+  // Expectation verdict: that compares Expected Rank to Set Rank, and the VN
+  // figures deliberately aren't paired with one.
+  const showVn = mode === 'Erumode' && submode === 'Normal';
 
   const columns: Column[] = [
     {
@@ -153,6 +159,43 @@ export default function PlayerRankTable({
       render: (r) =>
         r.expectation ? <ExpectationBadge label={r.expectation} /> : <span className="text-textDim">—</span>,
     },
+    // VN pair closing the row for Erumode Normal: ... | Expectation | VN GR |
+    // VN Expected Rank. VN GR is the songs-weighted average of the range's
+    // VN-only (Mst) Guess Rates; VN Expected Rank is the same songs-weighted
+    // computation as Expected Rank but fed VN-only Performance alone (itself
+    // derived from VN GR — see lib/guess-stats.ts). No Expectation verdict
+    // for either: that compares Expected Rank to Set Rank, and the VN
+    // figures deliberately aren't paired with one.
+    ...(showVn
+      ? [
+          {
+            key: 'vnGuessRate',
+            label: 'VN GR',
+            title: 'Average VN Guess Rate — Mst (main-title) answers only, songs-weighted over the range',
+            accessor: (r: PlayerRankRow) => r.vnGuessRate ?? -1,
+            cellStyle: (r: PlayerRankRow) => percentHeat(r.vnGuessRate),
+            className: 'border-l border-border',
+            render: (r: PlayerRankRow) =>
+              r.vnGuessRate == null ? (
+                <span className="text-textDim">—</span>
+              ) : (
+                <span className="text-accent">{pct(r.vnGuessRate)}</span>
+              ),
+          } as Column,
+          {
+            key: 'vnExpectedRank',
+            label: 'VN Expected Rank',
+            title: 'VN Expected Rank — same songs-weighted computation as Expected Rank, but from VN-only (Mst) Performance alone',
+            accessor: (r: PlayerRankRow) => r.vnExpectedRank ?? -1,
+            render: (r: PlayerRankRow) =>
+              r.vnExpectedRank == null ? (
+                <span className="text-textDim">—</span>
+              ) : (
+                <span className="font-medium text-text">{r.vnExpectedRank.toFixed(2)}</span>
+              ),
+          } as Column,
+        ]
+      : []),
   ];
 
   function onSort(key: string) {

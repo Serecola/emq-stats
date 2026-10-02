@@ -147,6 +147,19 @@ export default function PlayerListTable({
 }) {
   const [sortKey, setSortKey] = useState<string | null>('setRank');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // Collapsed VN group for Erumode Normal — same Mst-only figures as the
+  // Player Manager's VN columns. One "VN ▸ / ▾" toggle header that expands
+  // into VN Guess Rate + VN Expected Rank; a plain <th> so it never sorts.
+  const showVn = mode === 'Erumode' && submode === 'Normal';
+  const [vnOpen, setVnOpen] = useState(false);
+
+  // VN-only (Mst) figures over the same range the row's other stats use:
+  // rank-row values when the player has a ladder row, else the sliced
+  // aggregate straight from the entries. Null when no Mst was measured.
+  const vnGrOf = (r: PlayerRow): number | null =>
+    isErumode ? (r.rank?.vnGuessRate ?? r.player.erumode.vnGuessRate) : null;
+  const vnExpOf = (r: PlayerRow): number | null =>
+    isErumode ? (r.rank?.vnExpectedRank ?? r.player.erumode.vnExpectedRank) : null;
   const isErumode = mode === 'Erumode';
 
   // A cell with no figure over the range sorts last in *both* directions —
@@ -368,7 +381,35 @@ export default function PlayerListTable({
           const value = r.split?.offlistGr;
           return value == null ? <span className="text-textDim">—</span> : pct(value);
         },
-      }
+      },
+      // Collapsed VN group for Erumode Normal: Mst answers only, pooled over
+      // the same range as every other figure (songs-weighted VN Guess Rate,
+      // songs-weighted mean of each tournament's VN-only Performance).
+      ...(showVn && vnOpen
+        ? [
+            {
+              key: 'vnGuessRate',
+              label: 'VN GR',
+              title: 'VN Guess Rate — Mst (main-title) answers only, pooled songs-weighted over the same range',
+              accessor: (r: PlayerRow) => vnGrOf(r) ?? missing(),
+              cellStyle: (r: PlayerRow) => percentHeat(vnGrOf(r)),
+              render: (r: PlayerRow) => {
+                const gr = vnGrOf(r);
+                return gr == null ? <span className="text-textDim">—</span> : pct(gr);
+              },
+            } as Column,
+            {
+              key: 'vnExpectedRank',
+              label: 'VN Exp',
+              title: 'VN Expected Rank — songs-weighted mean of each tournament\u2019s VN-only Performance (same rating curve, Mst rate in)',
+              accessor: (r: PlayerRow) => vnExpOf(r) ?? missing(),
+              render: (r: PlayerRow) => {
+                const exp = vnExpOf(r);
+                return exp == null ? <span className="text-textDim">—</span> : exp.toFixed(2);
+              },
+            } as Column,
+          ]
+        : []),
     );
   }
 
@@ -447,6 +488,25 @@ export default function PlayerListTable({
                 pad={DENSE_CELL_PAD}
               />
             ))}
+            {showVn && (
+              <th
+                key="vn-toggle"
+                title={vnOpen ? 'Collapse VN columns' : 'Expand: VN Guess Rate + VN Expected Rank (Mst answers only)'}
+                className={`cursor-pointer select-none whitespace-nowrap ${DENSE_CELL_PAD} text-right font-medium hover:text-textSub`}
+                onClick={() => {
+                  if (vnOpen && (sortKey === 'vnGuessRate' || sortKey === 'vnExpectedRank')) {
+                    setSortKey('setRank');
+                    setSortDir('desc');
+                  }
+                  setVnOpen((v) => !v);
+                }}
+              >
+                <span className="inline-flex items-center gap-0.5">
+                  VN
+                  <span className="w-2 text-[0.6rem] text-textDim">{vnOpen ? '▾' : '▸'}</span>
+                </span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -469,6 +529,15 @@ export default function PlayerListTable({
                   {c.render(r)}
                 </td>
               ))}
+              {showVn && !vnOpen && (
+                <td
+                  key="vn-collapsed"
+                  className={`${DENSE_CELL_PAD} text-right text-textDim`}
+                  title="Expand VN for VN Guess Rate + VN Expected Rank (Mst answers only)"
+                >
+                  —
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

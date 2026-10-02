@@ -1,4 +1,4 @@
-import { norm } from './stats';
+﻿import { norm } from './stats';
 import { computeMatchStats } from './stats';
 import { computeGuessRateStats } from './guess-stats';
 import { resolveAliasKey, withAliases, type PlayerAliases } from './player-aliases';
@@ -14,6 +14,12 @@ export interface PlayerMatchEntry {
   // Performance = the mode/submode rating (see guess-stats.ts) — the number
   // the match Guess Rate table shows and rates players by.
   performance: number;
+  // VN-only (Mst) reading of an Erumode tournament, carried per entry so a
+  // ranged view can pool VN Guess Rate (songs-weighted) and VN Expected Rank
+  // (songs-weighted mean of these) exactly like the combined figures. Null
+  // when that tournament never asked Mst.
+  vnGuessRate?: number | null;
+  vnPerformance?: number | null;
   // Per-answer-type guess rates (%) for that tournament, keyed by the raw
   // AnsType string — present only on Erumode entries, and only those types
   // that were active in that tournament.
@@ -54,6 +60,13 @@ export interface NgmcAggregate {
 export interface ErumodeAggregate {
   matchesPlayed: number;
   totalSongs: number;
+  // VN-only (Mst) pooled figures for the Erumode Normal VN columns:
+  // vnGuessRate = songs-weighted mean of each tournament's Mst rate,
+  // vnExpectedRank = songs-weighted mean of each tournament's VN-only
+  // Performance. Null when no tournament in range asked Mst — 'never
+  // measured' rather than a 0% that would read like a measurement.
+  vnGuessRate: number | null;
+  vnExpectedRank: number | null;
   // Guess rate here is a weighted average across matches — each match's
   // guess rate is normalized over (songs × active answer types), so a
   // straight unweighted mean would over-count matches with fewer active
@@ -87,8 +100,36 @@ function emptyNgmc(): NgmcAggregate {
   };
 }
 
+export function emptyErumodeAggregate(): ErumodeAggregate {
+  return { matchesPlayed: 0, totalSongs: 0, vnGuessRate: null, vnExpectedRank: null, overallGuessRate: 0, overallPerformance: 0 };
+}
+
 function emptyErumode(): ErumodeAggregate {
-  return { matchesPlayed: 0, totalSongs: 0, overallGuessRate: 0, overallPerformance: 0 };
+  return emptyErumodeAggregate();
+}
+
+/**
+ * VN-only (Mst) pooled figures over a set of Erumode entries: songs-weighted
+ * VN Guess Rate and songs-weighted VN Expected Rank (mean of each
+ * tournament's VN-only Performance). Only tournaments that actually asked
+ * Mst contribute — entries without an Mst reading are skipped, so a game
+ * with extra GR columns still feeds exactly its VN numbers.
+ *
+ * Nulls mark "no Mst measured in this range" rather than a 0%.
+ */
+export function vnStatsOf(entries: PlayerMatchEntry[]): { vnGuessRate: number | null; vnExpectedRank: number | null } {
+  let songs = 0;
+  let grWeighted = 0;
+  let perfWeighted = 0;
+  for (const e of entries) {
+    if (e.mode !== 'Erumode') continue;
+    if (e.vnGuessRate == null || e.vnPerformance == null) continue;
+    songs += e.songs;
+    grWeighted += e.vnGuessRate * e.songs;
+    perfWeighted += e.vnPerformance * e.songs;
+  }
+  if (songs === 0) return { vnGuessRate: null, vnExpectedRank: null };
+  return { vnGuessRate: grWeighted / songs, vnExpectedRank: perfWeighted / songs };
 }
 
 /**
@@ -177,6 +218,8 @@ export function computeAllPlayerStats(
           songs: row.songs,
           guessRate: row.guessRate,
           performance: row.performance,
+          vnGuessRate: row.vnGuessRate,
+          vnPerformance: row.vnPerformance,
           perType: { ...(guessStats.activeTypes.length > 0 ? row.perType : {}) },
           rigCount: row.rigCount,
           rigHits: row.rigHits,
@@ -231,6 +274,12 @@ export function computeAllPlayerStats(
     s.erumode.overallPerformance = s.erumode.totalSongs
       ? s.erumode.overallPerformance / s.erumode.totalSongs
       : 0;
+    // VN-only pooled figures over the same entries: regular Erumode games only
+    // (entries are per-tournament already), Mst numbers alone even when the
+    // tournament ran extra GR columns.
+    const vn = vnStatsOf(s.entries);
+    s.erumode.vnGuessRate = vn.vnGuessRate;
+    s.erumode.vnExpectedRank = vn.vnExpectedRank;
     s.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }
   summaries.sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.uname.localeCompare(b.uname));
@@ -279,6 +328,12 @@ export function slicePlayerSummary(player: PlayerSummary, limit: number): Player
     entries,
   };
 
+  // VN-only (Mst) accumulators over the same slice. Kept separate from the
+  // combined songs count: the VN denominators must be Mst-measured songs.
+  let vnSongs = 0;
+  let vnGrWeighted = 0;
+  let vnPerfWeighted = 0;
+
   // Accumulators first, as computeAllPlayerStats does too: the two rates hold
   // their weighted sums here and are turned into averages below.
   for (const e of entries) {
@@ -288,6 +343,16 @@ export function slicePlayerSummary(player: PlayerSummary, limit: number): Player
       sliced.erumode.totalSongs += e.songs;
       sliced.erumode.overallGuessRate += e.guessRate * e.songs;
       sliced.erumode.overallPerformance += e.performance * e.songs;
+      // VN-only (Mst) accumulators over the same slice — songs-weighted like
+      // the combined figures. Entries without an Mst reading contribute
+      // nothing, so a game with extra GR columns still feeds only VN numbers.
+      // vnSongs tracks Mst-measured songs separately: the denominator must be
+      // VN songs, not all songs (see the finals below).
+      if (e.vnGuessRate != null && e.vnPerformance != null) {
+        vnSongs += e.songs;
+        vnGrWeighted += e.vnGuessRate * e.songs;
+        vnPerfWeighted += e.vnPerformance * e.songs;
+      }
     } else {
       sliced.ngmc.matchesPlayed++;
       sliced.ngmc.totalSongs += e.songs;
@@ -318,6 +383,11 @@ export function slicePlayerSummary(player: PlayerSummary, limit: number): Player
   sliced.erumode.overallPerformance = sliced.erumode.totalSongs
     ? sliced.erumode.overallPerformance / sliced.erumode.totalSongs
     : 0;
+  // VN-only finals over the sliced entries: songs-weighted means over
+  // Mst-measured songs. A slice with no Mst readings keeps nulls ("never
+  // measured") rather than a 0% that would read like a measurement.
+  sliced.erumode.vnGuessRate = vnSongs > 0 ? vnGrWeighted / vnSongs : null;
+  sliced.erumode.vnExpectedRank = vnSongs > 0 ? vnPerfWeighted / vnSongs : null;
   return sliced;
 }
 

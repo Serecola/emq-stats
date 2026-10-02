@@ -40,6 +40,13 @@ export interface ErumodeGuessRow {
   uname: string;
   guessRate: number; // % across all active answer types
   perType: Record<string, number>; // answer type -> guess rate %, active types only
+  // VN-only (Mst / main-title) view of the same tournament: the Mst per-type
+  // rate plus that rate re-graded through the same rating curve, so an
+  // Erumode Normal table can show a VN Guess Rate + VN Expected Rank that
+  // isolate what the VN column measured even when the tournament ran extra
+  // GR columns. Null when this tournament never asked Mst.
+  vnGuessRate: number | null; // % — Mst only
+  vnPerformance: number | null; // computePerformance over vnGuessRate
   rigGr: number;
   rigCount: number;
   // Raw counts behind rigGr/offlistGr, kept beside them so a caller pooling
@@ -283,10 +290,24 @@ export function computeGuessRateStats(
     // than back out of those two displayed percentages, which are rounded.
     const offlistOpportunities = (acc.songCount[3] - acc.rigCount) * activeTypes.length;
     const offlistCorrect = totalActiveCorrect - totalActiveRigHits;
+    // VN-only reading of this tournament: the Mst per-type rate re-graded
+    // through the same rating curve as the combined figure, so the VN columns
+    // mean "this tournament, VN answers only". Mst is always present in
+    // practice; the null covers a hypothetical export that never asked it.
+    const mstIdx = ANSWER_TYPES.indexOf('Mst');
+    const vnGuessRate = activeTypes.includes('Mst') && acc.songCount[3]
+      ? (100 * acc.saCorrectCount[mstIdx]) / acc.songCount[3]
+      : null;
+    const vnPerformance =
+      vnGuessRate === null
+        ? null
+        : computePerformance('Erumode', match.submode, vnGuessRate, 0, totalPlayers);
     return {
       uname: acc.uname,
       guessRate,
       perType,
+      vnGuessRate,
+      vnPerformance,
       rigGr,
       rigCount: acc.rigCount,
       rigHits: totalActiveRigHits,

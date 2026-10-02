@@ -7,7 +7,7 @@ import { extractCatalogFromFiles } from './catalog';
 import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
-import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, type PlayerRankRow } from './player-ranks';
+import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, recentVnExpectedRanksFor, type PlayerRankRow } from './player-ranks';
 import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
 import { withAssumedZeroScores } from './schedule';
 import { norm } from './stats';
@@ -397,6 +397,39 @@ export async function listRecentExpectedRanks(): Promise<SetRanks> {
           (m) => m.mode === mode && m.submode === submode
         );
         const expected = recentExpectedRanksFor(submodeMatches, mode, 5, aliases);
+        if (expected) {
+          ranks[mode][submode] = expected;
+        }
+      }
+    }
+
+    return ranks;
+  });
+}
+
+/**
+ * VN-only Expected Ranks from each player's 5 most recent tournaments — the
+ * autodrafter's "Expected (VN Only)" rank source. Same shape and caching as
+ * listRecentExpectedRanks, but only Mst (main-title) answers feed it, so a
+ * tournament that also ran extra GR columns contributes exactly its VN
+ * numbers. Any mode/sub-mode without VN data is left out, so the caller
+ * treats those players as unranked (no Set Rank fallback — same as the
+ * old Pasted-table source this replaces).
+ */
+export async function listRecentVnExpectedRanks(): Promise<SetRanks> {
+  await ensureSchema();
+  return cached('recent-vn-expected-ranks', async () => {
+    const allMatches = await listMatches();
+    const aliases = await listPlayerAliases();
+    const ranks: SetRanks = {};
+
+    for (const mode of MODES) {
+      if (!ranks[mode]) ranks[mode] = {};
+      for (const submode of SUBMODES_BY_MODE[mode]) {
+        const submodeMatches = allMatches.filter(
+          (m) => m.mode === mode && m.submode === submode
+        );
+        const expected = recentVnExpectedRanksFor(submodeMatches, mode, 5, aliases);
         if (expected) {
           ranks[mode][submode] = expected;
         }

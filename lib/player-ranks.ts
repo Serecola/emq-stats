@@ -34,6 +34,11 @@ export interface PlayerRankRow {
   // mean — see lib/player-stats.ts). Same number/scale as the rank a roster
   // is annotated with, which is what makes the two comparable.
   expectedRank: number;
+  // VN-only reading of the same range (Erumode Mst in isolation): songs-weighted
+  // VN Guess Rate and the songs-weighted mean of each tournament's VN-only
+  // Performance. Null outside Erumode or when no tournament asked Mst.
+  vnGuessRate: number | null;
+  vnExpectedRank: number | null;
   setRank: number | null; // admin-assigned rank for this gamemode + sub-mode
   // Expected Rank − Set Rank; null while no Set Rank exists to compare against.
   diff: number | null;
@@ -87,6 +92,7 @@ export function computePlayerRankRows(
   const addRow = (
     uname: string,
     aggregate: { matchesPlayed: number; totalSongs: number; overallGuessRate: number; overallPerformance: number },
+    view: { erumode: { vnGuessRate: number | null; vnExpectedRank: number | null } },
     matchesPlayedAllTime: number,
     record: PlayerGameRecord
   ) => {
@@ -107,6 +113,8 @@ export function computePlayerRankRows(
       record,
       winRate: winRatePct(record),
       expectedRank,
+      vnGuessRate: isErumode ? view.erumode.vnGuessRate : null,
+      vnExpectedRank: isErumode ? view.erumode.vnExpectedRank : null,
       setRank,
       diff,
       expectation: diff === null ? null : expectationFromDiff(diff),
@@ -135,7 +143,7 @@ export function computePlayerRankRows(
       record.losses += inMatch.losses;
       record.games += inMatch.games;
     }
-    addRow(view.uname, isErumode ? view.erumode : view.ngmc, p.matchesPlayed, record);
+    addRow(view.uname, isErumode ? view.erumode : view.ngmc, view, p.matchesPlayed, record);
   }
 
   // Best current form first; unranked-but-comparable rows keep their
@@ -227,6 +235,51 @@ export function recentExpectedRanksFor(
     let songs = 0;
     for (const e of recent) {
       weighted += e.performance * e.songs;
+      songs += e.songs;
+    }
+    if (songs === 0) continue;
+    const expectedRank = weighted / songs;
+    if (expectedRank > 0) {
+      ranks[resolveAliasKey(p.uname, aliases)] = expectedRank;
+    }
+  }
+  return Object.keys(ranks).length > 0 ? ranks : null;
+}
+
+/**
+ * VN-only Expected Ranks from recent form: for each player, the
+ * songs-weighted mean of their per-tournament VN-only Performance over their
+ * `limit` most recent tournaments — the autodrafter's "Expected (VN Only)"
+ * source.
+ *
+ * Same shape as `recentExpectedRanksFor` — the caller can use the two
+ * interchangeably — but only Mst (main-title) answers feed it, so a
+ * tournament that also ran Artist/Composer/etc. columns contributes exactly
+ * its VN numbers. Tournaments (and players) with no Mst readings yield
+ * nothing rather than a 0, so a player with no VN data simply has no entry;
+ * unlike the combined source there is no Set Rank fallback — the drafter
+ * treats them like the Pasted-table mode treats unranked players.
+ */
+export function recentVnExpectedRanksFor(
+  submodeMatches: Match[],
+  mode: string,
+  limit = 5,
+  aliases: PlayerAliases = {}
+): Record<string, number> | null {
+  const allStats = computeAllPlayerStats(submodeMatches, aliases);
+  if (!allStats.length) return null;
+
+  const ranks: Record<string, number> = {};
+  for (const p of allStats) {
+    // Most recent first, like `recentExpectedRanksFor` — but the per-tournament
+    // numbers are the VN-only ones, and entries without an Mst reading are
+    // skipped rather than counted as zero.
+    const recent = p.entries.filter((e) => e.mode === mode).slice(0, limit);
+    let weighted = 0;
+    let songs = 0;
+    for (const e of recent) {
+      if (e.vnPerformance == null) continue;
+      weighted += e.vnPerformance * e.songs;
       songs += e.songs;
     }
     if (songs === 0) continue;

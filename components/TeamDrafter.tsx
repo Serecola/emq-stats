@@ -36,10 +36,12 @@ const fmt1 = (n: number) => String(roundToTenth(n));
  *   - `expected` — the player's Expected Rank from their last 5 tournaments
  *                  in this gamemode + sub-mode, falling back to their Set
  *                  Rank when they have no games to compute one from.
- *   - `pasted`   — only the table pasted into the Ranks box, in
- *                  "11: karira, patt" format.
+ *   - `vn`       — the player's VN-only Expected Rank from their last 5
+ *                  tournaments (Mst answers only), with NO Set Rank fallback:
+ *                  a player with no VN data is treated as unranked, exactly
+ *                  like the old Pasted-table source treated missing players.
  */
-type RankSource = 'set' | 'expected' | 'pasted';
+type RankSource = 'set' | 'expected' | 'vn';
 
 const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
   { id: 'set', label: 'Set Ranks', hint: 'Saved Set Ranks for this mode + sub-mode (default)' },
@@ -48,7 +50,11 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
     label: 'Expected (last 5)',
     hint: "Each player's Expected Rank from their last 5 tournaments, falling back to their Set Rank",
   },
-  { id: 'pasted', label: 'Pasted table', hint: 'Only the rank table pasted into the Ranks box' },
+  {
+    id: 'vn',
+    label: 'Expected (VN Only)',
+    hint: "Each player's VN-only Expected Rank from their last 5 tournaments (Mst answers only) — no Set Rank fallback",
+  },
 ];
 
 /**
@@ -58,9 +64,11 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
  * finds — the same workflow as the host scripts, except the result is
  * written straight back into the Teams box.
  *
- * `savedRanks` is the admin's Set Ranks and `expectedRanks` the
+ * `savedRanks` is the admin's Set Ranks, `expectedRanks` the
+ * last-5-tournaments Expected Ranks, and `vnExpectedRanks` the VN-only
  * last-5-tournaments Expected Ranks for the tournament's current gamemode +
- * sub-mode (see the Player Manager / listSetRanks / listRecentExpectedRanks).
+ * sub-mode (see the Player Manager / listSetRanks / listRecentExpectedRanks /
+ * listRecentVnExpectedRanks).
  * Which table leads is the rank-source choice above the players box; either
  * way the Ranks box pastes on top as a one-off override, and a player the
  * chosen source can't rank is shown with an inline input so the admin can
@@ -74,11 +82,17 @@ export default function TeamDrafter({
   onApply,
   savedRanks,
   expectedRanks,
+  vnExpectedRanks,
   savedRanksLabel,
 }: {
   onApply: (teams: string[][], ranks: Record<string, number>) => void;
   savedRanks?: Record<string, number> | null;
   expectedRanks?: Record<string, number> | null;
+  // VN-only last-5 Expected Ranks for this mode + sub-mode — the
+  // "Expected (VN Only)" source's base table. No Set Rank fallback comes
+  // from this table; missing players are unranked, like the old
+  // Pasted-table source.
+  vnExpectedRanks?: Record<string, number> | null;
   savedRanksLabel?: string;
 }) {
   const [playersText, setPlayersText] = useState('');
@@ -109,20 +123,26 @@ export default function TeamDrafter({
   }, [manualRanks]);
   // Which table leads and what fills a gap in it: the chosen source, plus Set
   // Ranks as the fallback under an Expected-Ranks draft (the only source with
-  // one). The Expected table is rounded to a tenth here — the only layer the
-  // app derives rather than the admin entering, so the only one rounded.
+  // one — VN Only deliberately has none, like the old Pasted-table source).
+  // The Expected tables are rounded to a tenth here — the only layers the
+  // app derives rather than the admin entering, so the only ones rounded.
   const layers = useMemo(() => {
     if (rankSource === 'set') return { primary: savedRanks, fallback: null };
     if (rankSource === 'expected') {
       const primary = expectedRanks ? roundRanks(expectedRanks) : null;
       return { primary, fallback: savedRanks };
     }
+    if (rankSource === 'vn') {
+      const primary = vnExpectedRanks ? roundRanks(vnExpectedRanks) : null;
+      return { primary, fallback: null };
+    }
     return { primary: null, fallback: null };
-  }, [rankSource, savedRanks, expectedRanks]);
+  }, [rankSource, savedRanks, expectedRanks, vnExpectedRanks]);
 
   // Layering of the chosen source (see mergeHiddenRanks): typed ranks win
   // over everything, then the pasted Ranks box, then the source's own table
-  // (Set Ranks, or Expected Ranks with Set Ranks as the fallback).
+  // (Set Ranks, Expected Ranks with Set Ranks as the fallback, or VN-only
+  // Expected Ranks with no fallback).
   const ranks = useMemo(() => {
     const merged = mergeHiddenRanks(listed, rankList.ranks, layers.primary, layers.fallback);
     for (const player of listed) {
@@ -170,7 +190,13 @@ export default function TeamDrafter({
     const bits: string[] = [];
     if (counts.pasted) bits.push(`${counts.pasted} pasted`);
     if (counts.primary)
-      bits.push(rankSource === 'expected' ? `${counts.primary} expected` : `${counts.primary} from Set Ranks`);
+      bits.push(
+        rankSource === 'expected'
+          ? `${counts.primary} expected`
+          : rankSource === 'vn'
+            ? `${counts.primary} VN expected`
+            : `${counts.primary} from Set Ranks`
+      );
     if (counts.fallback) bits.push(`${counts.fallback} from Set Ranks`);
     if (counts.typed) bits.push(`${counts.typed} typed below`);
     return bits;
@@ -289,13 +315,19 @@ export default function TeamDrafter({
             back to Set Ranks, or type a rank below.
           </p>
         ))}
-      {rankSource === 'pasted' && (
-        <p className="mt-1 text-[0.65rem] text-textDim">
-          Balancing with only the Ranks box below — paste a{' '}
-          <span className="font-mono">rank: name, name</span> table, e.g.{' '}
-          <span className="font-mono">11: karira, patt</span>.
-        </p>
-      )}
+      {rankSource === 'vn' &&
+        (vnExpectedRanks ? (
+          <p className="mt-1 text-[0.65rem] text-accent">
+            Using each player&apos;s VN-only Expected Rank from their last 5
+            {savedRanksLabel ? ` ${savedRanksLabel}` : ''} tournaments (Mst answers only) — no Set
+            Rank fallback, so players without one are asked for a rank below.
+          </p>
+        ) : (
+          <p className="mt-1 text-[0.65rem] text-textDim">
+            No VN-only Expected Rank data{savedRanksLabel ? ` for ${savedRanksLabel}` : ''} yet —
+            type a rank below for each player you want drafted.
+          </p>
+        ))}
 
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
@@ -315,7 +347,7 @@ export default function TeamDrafter({
           <label className="mb-1 block text-[0.65rem] uppercase tracking-wide text-textDim">
             Ranks{' '}
             <span className="normal-case text-textDim">
-              ({rankSource === 'pasted' ? 'your rank source' : 'optional — overrides the source above'})
+              (optional — overrides the source above)
             </span>
           </label>
           <textarea
@@ -323,11 +355,7 @@ export default function TeamDrafter({
             onChange={(e) => setRanksText(e.target.value)}
             rows={3}
             spellCheck={false}
-            placeholder={
-              rankSource === 'pasted'
-                ? '11: karira, patt\n10: Shirosora, shiro206\n9: Hyther, Tommy'
-                : 'Copypaste from Tour Sheet'
-            }
+            placeholder="Copypaste from Tour Sheet"
             className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-2 py-1.5 font-mono text-xs outline-none focus:border-textSub"
           />
         </div>

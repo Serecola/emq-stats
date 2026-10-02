@@ -409,7 +409,7 @@ autodraft on the tag itself.
 ### Autodraft rank sources
 
 The match form's autodrafter (`components/TeamDrafter.tsx`) balances with one
-of two rank sources, picked with the pills above the players box:
+of three rank sources, picked with the pills above the players box:
 
 1. **Set Ranks** (default) — the saved Set Ranks for the tournament's own
    mode + sub-mode, so a new tournament only needs the players list pasted in.
@@ -425,6 +425,12 @@ of two rank sources, picked with the pills above the players box:
    decimal place, up or down to the nearest tenth (`roundToTenth` in
    `lib/teams.ts`) — before they're balanced, drafted and written back into the
    Teams box. Ranks you assign or paste are used exactly as given.
+3. **Expected (VN Only)** — the same last-5-tournaments computation but from
+   VN-only (Mst answers) Performance alone (`recentVnExpectedRanksFor` in
+   `lib/player-ranks.ts`), with **no Set Rank fallback**: a player with no VN
+   data has no rank here and sits out the draft (or gets a rank typed inline)
+   — the same unranked semantics the old Pasted-table source had. Rounding
+   works as above.
 
 Whichever source is selected, the Ranks box still works as a per-tournament
 override on top of it — a `rank: name, name` table pasted in there
