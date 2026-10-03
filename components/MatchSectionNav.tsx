@@ -32,9 +32,9 @@ export interface JumpSection {
  * passive) rather than observed, so the answer is the same at the very bottom
  * of the page, where nothing is crossing anything.
  *
- * Hidden below `xl`: the page is already capped at max-w-5xl, so a narrower
- * window has no gutter beside the content to sit in, and stealing width from
- * the tables would cost more than the rail is worth.
+ * Hidden below `min-[1600px]`: the app is capped at max-w-7xl, so only a
+ * viewport wide enough to leave a real gutter beside that (~1600px and up)
+ * has room for the rail to sit without overlapping the tables.
  */
 export default function MatchSectionNav({ sections }: { sections: JumpSection[] }) {
   const [active, setActive] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function MatchSectionNav({ sections }: { sections: JumpSection[] 
   return (
     <nav
       aria-label="Jump to section"
-      className="fixed left-4 top-1/2 z-20 hidden -translate-y-1/2 xl:block"
+      className="fixed left-4 top-1/2 z-20 hidden -translate-y-1/2 min-[1600px]:block"
     >
       <ul className="space-y-0.5 rounded-lg border border-border bg-surface/80 p-1.5 backdrop-blur">
         {sections.map((section) => {

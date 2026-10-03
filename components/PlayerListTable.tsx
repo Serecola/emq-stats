@@ -462,19 +462,16 @@ export default function PlayerListTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      {/* The Erumode column set is wide — five answer types plus the rig figures
-          — but the type inside it is small (see the class doc), so the table
-          only holds a floor under that: below it the numbers and their heat
-          shading would stop being readable. Above it the columns are free to
-          shrink to their content, which is what keeps the row from scrolling on
-          a laptop screen. */}
-      <table
-        className={`w-full border-collapse text-xs ${
-          isErumode ? 'min-w-[960px]' : 'min-w-[620px]'
-        }`}
-      >
+      {/* No fixed floor under the columns: without one they shrink to their
+          content, so the table scales down with the viewport instead of forcing
+          a horizontal scrollbar — which is what lets the wide Erumode column
+          set fit a laptop screen, and a phone below that. The type steps down
+          under `sm` on top of that (a smaller grid needs less width), and the
+          wrapper keeps its own `overflow-x-auto` as the fallback for the point
+          the numbers themselves can't compress any further. */}
+      <table className="w-full border-collapse text-[0.7rem] sm:text-xs">
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted">
+          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.6rem] uppercase tracking-wide text-textMuted sm:text-[0.65rem]">
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}

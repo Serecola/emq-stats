@@ -189,6 +189,19 @@ export default async function MatchPage({
             </Link>
           )}
         </div>
+        {/* Stats opt-out banner: the tour's own bracket/results/stats below read
+            exactly as usual — only the cross-tournament aggregates (last-5 /
+            all-time) skip it. Loud on purpose, so the exclusion never reads as
+            silently missing stats. */}
+        {match.excludeFromStats && (
+          <div className="mt-3 rounded-lg border border-taken/50 bg-taken/5 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-taken">Excluded from stats</span>
+            <span className="text-textSub">
+              {' '}
+              — this tournament does not count towards any player&apos;s last-5 or all-time stats.
+            </span>
+          </div>
+        )}
         <h1 className="mt-2 text-lg font-semibold">{match.title}</h1>
         <p className="text-xs text-textDim">
           {date} · {match.files.length} file{match.files.length !== 1 ? 's' : ''}

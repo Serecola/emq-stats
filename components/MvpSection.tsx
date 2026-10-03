@@ -39,7 +39,7 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
               <span className="font-semibold text-text">= {team.playedLike.toFixed(2)}</span>
               {team.hasRanks && (
                 <span className="ml-1 whitespace-nowrap">
-                  <span className={team.diff >= 0 ? 'text-[#22c55e]' : 'text-taken'}>
+                  <span className={team.diff >= 0 ? 'text-promote' : 'text-taken'}>
                     ({signed(team.diff)}
                   </span>
                   <span className="text-textDim">, from {team.expectedRank})</span>
@@ -69,7 +69,7 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
                   : Played like{' '}
                   <span className="font-semibold text-accent">{p.playedLike.toFixed(2)}</span>{' '}
                   (Current Rank: {p.rank}, {' '}
-                  <span className={p.diff >= 0 ? 'text-[#22c55e]' : 'text-taken'}>
+                  <span className={p.diff >= 0 ? 'text-promote' : 'text-taken'}>
                     {signed(p.diff)}
                   </span>
                   )

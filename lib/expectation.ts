@@ -33,17 +33,16 @@ export function expectationFromDiff(diff: number): ExpectationLabel {
  * (background + text); EXPECTED stays null so it renders as plain, neutral
  * text rather than a badge — it's meant to read as "nothing notable".
  *
- * DEMOTE's text is deliberately lighter than the theme's `taken` red. A badge
- * paints its text on a wash of its *own* hue, so the tint raises the background
- * under the text and eats the contrast that mid-tone color would have on a
- * plain surface — at the `taken` value the label measured 4.0:1 here, under
- * AA's 4.5:1. Lightening the text and leaving the wash alone buys it 5.5:1.
- * The other three washes are light enough already to carry their text.
+ * A badge paints its text on a wash of its *own* hue, so the tint raises the
+ * background under the text and eats the contrast a mid-tone color would have
+ * on a bare surface — each theme therefore carries its own text step for the
+ * washes (see the `--exp-*` variables in globals.css): lightened text on dark
+ * surfaces, darkened text on white.
  */
 export const EXPECTATION_STYLES: Record<ExpectationLabel, { bg: string; text: string } | null> = {
-  PROMOTE: { bg: 'rgba(34,197,94,0.15)', text: '#22c55e' }, // green
-  'NEAR PROMOTE': { bg: 'rgba(134,239,172,0.12)', text: '#86efac' }, // light green
+  PROMOTE: { bg: 'rgb(var(--exp-promote-bg) / 0.15)', text: 'rgb(var(--exp-promote-text))' }, // green
+  'NEAR PROMOTE': { bg: 'rgb(var(--exp-near-promote-bg) / 0.12)', text: 'rgb(var(--exp-near-promote-text))' }, // light green
   EXPECTED: null, // normal — no badge
-  'NEAR DEMOTE': { bg: 'rgba(252,165,165,0.12)', text: '#fca5a5' }, // light red
-  DEMOTE: { bg: 'rgba(224,82,82,0.15)', text: '#f27676' }, // red — see note above
+  'NEAR DEMOTE': { bg: 'rgb(var(--exp-near-demote-bg) / 0.12)', text: 'rgb(var(--exp-near-demote-text))' }, // light red
+  DEMOTE: { bg: 'rgb(var(--exp-demote-bg) / 0.15)', text: 'rgb(var(--exp-demote-text))' }, // red — see note above
 };

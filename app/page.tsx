@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { listMatchSummaries, listPlayerAliases } from '@/lib/store';
 import ModeToggle from '@/components/ModeToggle';
@@ -12,6 +13,7 @@ import {
 } from '@/lib/tournament-search';
 import { canonicalAliases } from '@/lib/player-aliases';
 import { teamColor, teamColorBg } from '@/lib/team-colors';
+import { weekRangeLabel, weekStart } from '@/lib/week';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,9 +89,27 @@ export default async function HomePage({
             <section>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-textMuted">Past tournaments</h2>
               <div className="space-y-2">
-                {past.map((m) => (
-                  <MatchCard key={m.id} match={m} />
-                ))}
+                {past.map((m, i) => {
+                  // Same week grouping as the Tour Manager (see
+                  // app/admin/page.tsx): tournaments come back ordered by
+                  // their own date, so every tour of a given week is already
+                  // contiguous. The row above lives in `matches` at offset
+                  // i — past[0]'s predecessor is the Current card — so a
+                  // divider appears wherever the week changes, including
+                  // between Current and the first past tour.
+                  const prev = matches[i];
+                  const newWeek = weekStart(prev.date) !== weekStart(m.date);
+                  return (
+                    <Fragment key={m.id}>
+                      {newWeek && (
+                        <div className="pt-3 text-xs font-semibold uppercase tracking-wide text-textMuted first:pt-0">
+                          Week of {weekRangeLabel(m.date)}
+                        </div>
+                      )}
+                      <MatchCard match={m} />
+                    </Fragment>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -112,6 +132,9 @@ function MatchCard({
     // count — one export is one game. Labelled as games on the card; see the
     // note where it's rendered.
     fileCount: number;
+    // Stats opt-out: excluded tours keep a red border + label so they never
+    // read as silently missing from player aggregates.
+    excludeFromStats?: boolean;
   };
   highlight?: boolean;
 }) {
@@ -120,15 +143,30 @@ function MatchCard({
     month: 'short',
     day: 'numeric',
   });
+  const excluded = match.excludeFromStats === true;
   return (
     <Link
       href={`/matches/${match.id}`}
       className={`block rounded-lg border px-4 py-3 transition hover:border-textSub ${
-        highlight ? 'border-accent/40 bg-surface' : 'border-border bg-surface'
+        excluded
+          ? 'border-taken/70 bg-surface hover:border-taken'
+          : highlight
+            ? 'border-accent/40 bg-surface'
+            : 'border-border bg-surface'
       }`}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="font-medium">{match.title}</span>
+        <span className="font-medium">
+          {match.title}
+          {excluded && (
+            <span
+              title="Excluded from stats — this tournament feeds no player aggregates"
+              className="ml-2 rounded-full border border-taken/50 px-1.5 py-0.5 align-middle text-[0.65rem] font-medium uppercase tracking-wide text-taken"
+            >
+              Excluded from stats
+            </span>
+          )}
+        </span>
         <span className="text-xs text-textDim">{date}</span>
       </div>
       {/* Every player, grouped into one chip per team in that team's own color.

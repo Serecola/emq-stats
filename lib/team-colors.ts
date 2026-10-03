@@ -12,30 +12,30 @@
  * (`accent`), so no team can ever be mistaken for a winner.
  *
  * Every hue is also a *text* color — a player's name is painted in their team's
- * color in the bracket, the podium, the standings and both stats tables — so the
- * palette is tuned for contrast, not just for telling teams apart. The floor is
- * the worst case a name actually lands on: its own roster chip tint, layered
- * over the winning row's `accent/10` wash inside a bracket card. The three
- * darkest hues (purple, blue, magenta) are the ones that needed lifting to
- * clear WCAG AA 4.5:1 there, and the palette tops out at 4.7:1 against that
- * worst case. Keep them at least this light.
+ * color in the bracket, the podium, the standings and both stats tables — so
+ * each theme carries its own step of the palette (see globals.css): lightened
+ * for contrast on the dark surfaces, darkened a step for contrast on white.
+ * Both are served through the same `--team-*` variables, so callers never
+ * branch on the theme — the values return `rgb(var(--team-N))` and flip with
+ * the `dark` class on <html> automatically.
  */
-export const TEAM_COLORS = ['#ab90fb', '#6da8ef', '#7ac97a', '#dd9ade', '#e08d4d', '#5fd1c9'];
+export const TEAM_COLORS = [0, 1, 2, 3, 4, 5].map((i) => `rgb(var(--team-${i}))`);
 
 /**
  * Color for the team at `teamIndex`, wrapping around for rosters with more
  * teams than the palette holds colors.
  */
 export function teamColor(teamIndex: number): string {
-  return TEAM_COLORS[teamIndex % TEAM_COLORS.length];
+  const i = ((teamIndex % TEAM_COLORS.length) + TEAM_COLORS.length) % TEAM_COLORS.length;
+  return `rgb(var(--team-${i}))`;
 }
 
 /**
- * `teamColor` as an `rgba()` tint with the given alpha, for backgrounds. The
- * palette is deliberately light so it works as text on the dark theme, which
- * means it has to be faded this way to sit *behind* text instead.
+ * `teamColor` as a translucent wash with the given alpha, for backgrounds.
+ * The palette is a text palette first, so it has to be faded this way to sit
+ * *behind* text instead.
  */
 export function teamColorBg(teamIndex: number, alpha: number): string {
-  const n = parseInt(teamColor(teamIndex).slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  const i = ((teamIndex % TEAM_COLORS.length) + TEAM_COLORS.length) % TEAM_COLORS.length;
+  return `rgb(var(--team-${i}) / ${alpha})`;
 }

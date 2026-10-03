@@ -53,6 +53,7 @@ export interface ExportedMatch {
   teams: string[][];
   renames: Record<string, string>;
   playerRanks: Record<string, number>;
+  excludeFromStats: boolean;
   fileCount: number;
   files: ExportedMatchFile[];
 }
@@ -214,6 +215,7 @@ export function buildExport(
       teams: match.teams,
       renames: match.renames,
       playerRanks: match.playerRanks,
+      excludeFromStats: match.excludeFromStats ?? false,
       fileCount: match.files.length,
       files: exported,
     });

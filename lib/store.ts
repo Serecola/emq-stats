@@ -37,6 +37,7 @@ interface MatchRow {
   renames: string;
   player_ranks: string;
   file_count: number;
+  exclude_from_stats?: number | null;
 }
 
 function rowToMatch(row: MatchRow): Match {
@@ -61,6 +62,7 @@ function rowToMatch(row: MatchRow): Match {
     files: withAssumedZeroScores(teams, JSON.parse(row.files), renames),
     renames,
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
+    excludeFromStats: Number(row.exclude_from_stats ?? 0) === 1,
   };
 }
 
@@ -78,17 +80,26 @@ function rowToMatchSummary(row: MatchRow): MatchSummary {
     renames: row.renames ? JSON.parse(row.renames) : {},
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
     fileCount: Number(row.file_count ?? 0),
+    excludeFromStats: Number(row.exclude_from_stats ?? 0) === 1,
   };
 }
 
 const SELECT_COLUMNS =
-  'id, title, name, date, region, mode, submode, created_at, teams, files, renames, player_ranks, file_count';
+  'id, title, name, date, region, mode, submode, created_at, teams, files, renames, player_ranks, file_count, exclude_from_stats';
 
 // Everything except `files`: one raw EMQ export is ~100 kB, a tournament
 // ~2 MB, and list views only render the count — which `file_count` has held
 // since it was written, so they never touch the payload at all.
 const SUMMARY_COLUMNS =
-  'id, title, name, date, region, mode, submode, created_at, teams, renames, player_ranks, file_count';
+  'id, title, name, date, region, mode, submode, created_at, teams, renames, player_ranks, file_count, exclude_from_stats';
+
+// A match feeds player aggregates (last-5 / all-time stats, rank rows,
+// Expected Ranks for the autodrafter) only when it isn't opted out. Every
+// derivation goes through this one filter; lists, the match page itself and
+// exports keep reading the unfiltered rows.
+function statsMatches(matches: Match[]): Match[] {
+  return matches.filter((m) => !m.excludeFromStats);
+}
 
 
 // How many statements to send per batch when writing a match's catalog. A
@@ -197,10 +208,11 @@ export async function createMatch(input: MatchInput): Promise<Match> {
     files: input.files,
     renames: input.renames ?? {},
     playerRanks: input.playerRanks ?? {},
+    excludeFromStats: input.excludeFromStats === true,
   };
   const insert: InStatement = {
-    sql: `INSERT INTO matches (id, title, name, date, region, mode, submode, created_at, teams, files, renames, player_ranks, file_count)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO matches (id, title, name, date, region, mode, submode, created_at, teams, files, renames, player_ranks, file_count, exclude_from_stats)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       match.id,
       match.title,
@@ -215,6 +227,7 @@ export async function createMatch(input: MatchInput): Promise<Match> {
       JSON.stringify(match.renames),
       JSON.stringify(match.playerRanks),
       match.files.length,
+      match.excludeFromStats ? 1 : 0,
     ],
   };
   await runBatched([insert, ...catalogStatements(match.files)]);
@@ -241,10 +254,15 @@ export async function updateMatch(
     files: input.files,
     renames: input.renames ?? {},
     playerRanks: input.playerRanks ?? {},
+    // The editor form no longer sends this (the toggle lives on the Tour
+    // Manager row) — an undefined input keeps the stored flag, so a re-save
+    // never silently re-includes an excluded tour.
+    excludeFromStats:
+      input.excludeFromStats === undefined ? existing.excludeFromStats : input.excludeFromStats === true,
   };
   const update: InStatement = {
     sql: `UPDATE matches
-          SET title = ?, name = ?, date = ?, region = ?, mode = ?, submode = ?, teams = ?, files = ?, renames = ?, player_ranks = ?, file_count = ?
+          SET title = ?, name = ?, date = ?, region = ?, mode = ?, submode = ?, teams = ?, files = ?, renames = ?, player_ranks = ?, file_count = ?, exclude_from_stats = ?
           WHERE id = ?`,
     args: [
       updated.title,
@@ -258,6 +276,7 @@ export async function updateMatch(
       JSON.stringify(updated.renames),
       JSON.stringify(updated.playerRanks),
       updated.files.length,
+      updated.excludeFromStats ? 1 : 0,
       id,
     ],
   };
@@ -270,6 +289,22 @@ export async function deleteMatch(id: string): Promise<void> {
   await ensureSchema();
   await getDb().execute({ sql: 'DELETE FROM matches WHERE id = ?', args: [id] });
   await markDataChanged();
+}
+
+/**
+ * Flips one tournament's stats opt-out flag without touching anything else.
+ * Used by the Tour Manager row toggle (PATCH
+ * /api/matches/[id]) — unlike updateMatch it never rewrites roster, uploads,
+ * scores or renames, so it can't clobber an editor save.
+ */
+export async function setMatchExcluded(id: string, excluded: boolean): Promise<Match | null> {
+  await ensureSchema();
+  await getDb().execute({
+    sql: 'UPDATE matches SET exclude_from_stats = ? WHERE id = ?',
+    args: [excluded ? 1 : 0, id],
+  });
+  await markDataChanged();
+  return getMatch(id);
 }
 
 export interface CatalogPlayer {
@@ -355,7 +390,7 @@ export async function listSetRanks(): Promise<SetRanks> {
 export async function listExpectedRanks(): Promise<SetRanks> {
   await ensureSchema();
   return cached('expected-ranks', async () => {
-    const allMatches = await listMatches();
+    const allMatches = statsMatches(await listMatches());
     const aliases = await listPlayerAliases();
     const ranks: SetRanks = {};
 
@@ -386,7 +421,7 @@ export async function listExpectedRanks(): Promise<SetRanks> {
 export async function listRecentExpectedRanks(): Promise<SetRanks> {
   await ensureSchema();
   return cached('recent-expected-ranks', async () => {
-    const allMatches = await listMatches();
+    const allMatches = statsMatches(await listMatches());
     const aliases = await listPlayerAliases();
     const ranks: SetRanks = {};
 
@@ -419,7 +454,7 @@ export async function listRecentExpectedRanks(): Promise<SetRanks> {
 export async function listRecentVnExpectedRanks(): Promise<SetRanks> {
   await ensureSchema();
   return cached('recent-vn-expected-ranks', async () => {
-    const allMatches = await listMatches();
+    const allMatches = statsMatches(await listMatches());
     const aliases = await listPlayerAliases();
     const ranks: SetRanks = {};
 
@@ -450,7 +485,7 @@ export async function listRecentVnExpectedRanks(): Promise<SetRanks> {
 export async function listPlayerStats(filter: MatchFilter): Promise<PlayerSummary[]> {
   await ensureSchema();
   return cached(`player-stats:${filter.mode}:${filter.submode}`, async () => {
-    const matches = applyMatchFilter(await listMatches(), filter);
+    const matches = applyMatchFilter(statsMatches(await listMatches()), filter);
     return computeAllPlayerStats(matches, await listPlayerAliases());
   });
 }
@@ -484,7 +519,7 @@ export async function listPlayerRankRows(
 ): Promise<PlayerRankRow[]> {
   await ensureSchema();
   return cached(`player-ranks:${mode}:${submode}:${limit ?? 'all'}`, async () => {
-    const allMatches = await listMatches();
+    const allMatches = statsMatches(await listMatches());
     // This sub-mode and nothing else — a sibling sub-mode's tournaments are a
     // different game, so they never contribute figures here.
     const matches = applyMatchFilter(allMatches, { mode, submode });

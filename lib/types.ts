@@ -62,6 +62,10 @@ export interface Match {
   // from Tier (a player's ordinal position within their team), which is
   // derived from `teams` order and never stored.
   playerRanks: Record<string, number>;
+  // Tournament stays visible (lists, its own page, exports) but contributes
+  // to no player aggregates — last-5 nor all-time. See lib/store.ts
+  // `statsMatches` for the single filter every derivation goes through.
+  excludeFromStats: boolean;
 }
 
 /**
@@ -99,6 +103,11 @@ export type SetRanks = Record<string, Record<string, Record<string, number>>>;
 export type PlayerTag = 'Bot' | 'NotBot';
 
 // Payload shape used when creating/updating a match from the admin panel.
+// The stats opt-out flag is deliberately NOT part of the editor payload —
+// exclusion is a Tour Manager row action (see components/ExcludeStatsToggle),
+// so updateMatch keeps the stored flag when the input leaves it undefined
+// (the optional field below only exists so createMatch can set the initial
+// value explicitly).
 export interface MatchInput {
   name: string;
   date: string;
@@ -109,6 +118,7 @@ export interface MatchInput {
   files: MatchFile[];
   renames: Record<string, string>;
   playerRanks: Record<string, number>;
+  excludeFromStats?: boolean;
 }
 
 export interface AttackRecord {

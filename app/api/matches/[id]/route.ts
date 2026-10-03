@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteMatch, getMatch, updateMatch } from '@/lib/store';
+import { deleteMatch, getMatch, setMatchExcluded, updateMatch } from '@/lib/store';
 import { isValidDate } from '@/lib/match-title';
 import { isValidTeamCount } from '@/lib/schedule';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
@@ -45,7 +45,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     );
   }
   // Files are optional — a tournament can exist with only a roster/fixtures
-  // and have its game JSON uploaded later.
+  // and have its game JSON uploaded later. The stats flag is intentionally
+  // NOT forwarded here: the editor form doesn't send it anymore (toggle lives
+  // on the Tour Manager row), and updateMatch keeps the stored value when the
+  // input leaves it undefined — so a re-save never re-includes an excluded
+  // tour by accident.
   const updated = await updateMatch(params.id, {
     ...body,
     files: Array.isArray(body.files) ? body.files : [],
@@ -57,4 +61,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   await deleteMatch(params.id);
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  // Row-level stats opt-out toggle from the Tour Manager (see
+  // components/ExcludeStatsToggle.tsx). Touches only the flag — never the
+  // roster, uploads or scores — so it can't clobber an editor save.
+  let body: { excludeFromStats?: unknown };
+  try {
+    body = (await req.json()) as { excludeFromStats?: unknown };
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
+  }
+  if (typeof body?.excludeFromStats !== 'boolean') {
+    return NextResponse.json({ error: 'excludeFromStats must be a boolean.' }, { status: 400 });
+  }
+  const updated = await setMatchExcluded(params.id, body.excludeFromStats);
+  if (!updated) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
+  return NextResponse.json(updated);
 }

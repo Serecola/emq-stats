@@ -34,6 +34,11 @@ const MATCH_COLUMN_MIGRATIONS: [column: string, statement: string][] = [
   // Counted once at write time so list views can show "3 files" without
   // reading (and parsing) the `files` payload they don't render.
   ['file_count', 'ALTER TABLE matches ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0'],
+  // Per-tournament stats opt-out: the tour stays visible (lists, its own
+  // page, exports) but feeds no player aggregates — last-5 nor all-time.
+  // Stored INTEGER 0/1 (SQLite has no bool); read as boolean in
+  // lib/store.ts rowToMatch/rowToMatchSummary.
+  ['exclude_from_stats', 'ALTER TABLE matches ADD COLUMN exclude_from_stats INTEGER NOT NULL DEFAULT 0'],
 ];
 
 let schemaReady: Promise<void> | null = null;
@@ -62,7 +67,8 @@ export function ensureSchema(): Promise<void> {
           files TEXT NOT NULL,
           renames TEXT NOT NULL DEFAULT '{}',
           player_ranks TEXT NOT NULL DEFAULT '{}',
-          file_count INTEGER NOT NULL DEFAULT 0
+          file_count INTEGER NOT NULL DEFAULT 0,
+          exclude_from_stats INTEGER NOT NULL DEFAULT 0
         )`,
         'CREATE INDEX IF NOT EXISTS idx_matches_date_created ON matches (date DESC, created_at DESC)',
         `CREATE TABLE IF NOT EXISTS data_version (

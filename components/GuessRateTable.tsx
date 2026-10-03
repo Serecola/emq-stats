@@ -48,12 +48,14 @@ function answerTypeTitle(t: string): string {
 }
 
 // Subtle per-tier row tints — T1..T4 only; anything beyond that (or
-// players not on any team) gets no tint.
+// players not on any team) gets no tint. Theme-aware: the hue comes from the
+// team's own variable and the alpha stays faint, so the wash reads on white
+// and on the dark surfaces alike.
 const TIER_BG: Record<number, string> = {
-  1: 'rgba(224,82,82,0.07)', // light red
-  2: 'rgba(224,196,82,0.07)', // light yellow
-  3: 'rgba(77,143,224,0.07)', // light blue
-  4: 'rgba(122,201,122,0.07)', // light green
+  1: 'rgb(var(--taken) / 0.07)',
+  2: 'rgb(var(--accent) / 0.10)',
+  3: 'rgb(var(--blocked) / 0.07)',
+  4: 'rgb(var(--promote) / 0.08)',
 };
 
 interface Column<T> {
@@ -68,14 +70,12 @@ interface Column<T> {
 function GenericSortableTable<T extends { uname: string }>({
   columns,
   rows,
-  minWidth,
   defaultSortKey,
   defaultSortDir = 'desc',
   rowTier,
 }: {
   columns: Column<T>[];
   rows: T[];
-  minWidth: number;
   defaultSortKey?: string;
   defaultSortDir?: SortDir;
   rowTier?: (row: T) => number | null;
@@ -97,8 +97,12 @@ function GenericSortableTable<T extends { uname: string }>({
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       {/* Dense type: the body sits just under the app's text-sm and the header
           just under that, so ~20 narrow stat columns stay legible without the
-          rows growing taller — see STATS_BODY_TEXT / STATS_HEADER_TEXT. */}
-      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`} style={{ minWidth }}>
+          rows growing taller — see STATS_BODY_TEXT / STATS_HEADER_TEXT. Those
+          sizes and DENSE_CELL_PAD all tighten under `sm`, and the table carries
+          no fixed min-width, so a narrower screen scales the grid down instead
+          of forcing a horizontal scrollbar; the wrapper's `overflow-x-auto` is
+          the fallback past the point the columns can't compress any further. */}
+      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
         <thead>
           <tr className={`border-b border-border bg-surfaceAlt text-left uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
             {columns.map((c) => (
@@ -124,19 +128,23 @@ function GenericSortableTable<T extends { uname: string }>({
           {sortedRows.map((row) => {
             const tier = rowTier?.(row) ?? null;
             const bg = tier !== null ? TIER_BG[tier] : undefined;
+            // Tinted rows hover with a neutral wash rather than brightening:
+            // `brightness-125` over a white page pushes the row toward white
+            // and reads as *less* highlight, while a translucent text-color
+            // overlay deepens it in both themes.
             return (
               <tr
                 key={row.uname}
                 style={bg ? { backgroundColor: bg } : undefined}
                 className={`border-b border-borderSub transition-colors last:border-b-0 ${
-                  bg ? 'hover:brightness-125' : 'hover:bg-surfaceAlt/50'
+                  bg ? 'hover:bg-text/[0.07]' : 'hover:bg-surfaceAlt/50'
                 }`}
               >
                 {columns.map((c) => (
                   <td
                     key={c.key}
                     className={`${DENSE_CELL_PAD} ${c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted tabular-nums'} ${
-                      hoveredCol === c.key ? 'bg-white/5' : ''
+                      hoveredCol === c.key ? 'bg-text/5' : ''
                     } ${c.className ?? ''}`}
                     onMouseEnter={() => setHoveredCol(c.key)}
                     onMouseLeave={() => setHoveredCol(null)}
@@ -325,7 +333,6 @@ export default function GuessRateTable({
       <GenericSortableTable
         columns={columns}
         rows={stats.erumodeRows}
-        minWidth={550 + stats.activeTypes.length * 56}
         defaultSortKey="guessRate"
         rowTier={(r) => tierOf(r.uname)}
       />
@@ -392,7 +399,6 @@ export default function GuessRateTable({
     <GenericSortableTable
       columns={columns}
       rows={stats.ngmcRows}
-      minWidth={760}
       defaultSortKey="guessRate"
       rowTier={(r) => tierOf(r.uname)}
     />

@@ -94,6 +94,29 @@ npm run dev
 The prefix applies here too, so visit `http://localhost:3000/emq-stats` for the
 viewer and `/emq-stats/admin` for the admin panel.
 
+## Light / dark mode
+
+The header has a theme toggle (☀ Light / 🌙 Dark) next to the nav. **Dark is
+the default** — the root layout ships `class="dark"` on `<html>`, and a
+pre-paint script removes it before first paint only when `localStorage` holds
+a `light` choice, so there's no theme flash on reload. The choice is
+remembered per browser under the `emq-theme` key.
+
+Implementation lives in three places:
+
+- `components/ThemeToggle.tsx` — the client button: flips the class, persists
+  the choice, and reads the DOM (not storage) on mount so its icon matches
+  whatever the pre-paint script already did.
+- `tailwind.config.ts` + `app/globals.css` — every palette color is an RGB
+  triplet CSS variable (`rgb(var(--x) / <alpha-value>)`), with light values on
+  `:root` and dark values under `.dark`. Class-driven theming
+  (`darkMode: 'class'`), so the same tokens (`bg-surface`, `text-taken`, …)
+  work in both themes including opacity modifiers (`bg-accent/15`, …).
+- `lib/team-colors.ts`, `lib/expectation.ts`, `lib/percent-heat.ts` — the
+  non-Tailwind colors (team hues, verdict badges, cell heat) read the same
+  variables or an `hsl()` that survives both backgrounds, rather than hardcoded
+  hexes.
+
 ## Deploying to Vercel
 
 1. Push this repo to GitHub and import it in Vercel.

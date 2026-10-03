@@ -118,17 +118,17 @@ function TeamRows({
       <tr className="border-b border-border bg-surfaceAlt/60">
         <td colSpan={5} className="px-3 py-2">
           {/* The per-team summary pills paint their label on a wash of the same
-              hue, so the label is lighter than the `taken` / `blocked` tokens
+              hue, so the label steps away from the `taken` / `blocked` tokens
               used for the plain-text columns below — the wash lifts the
               background under the text, and a mid-tone color loses the
               contrast it would have on a bare surface. */}
           <div className={`flex flex-wrap items-center gap-2 font-semibold uppercase tracking-wide ${STATS_BODY_TEXT}`}>
             <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: color }} />
             {team.label}&apos;s team
-            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(224,82,82,0.1)', color: '#f27676' }}>
+            <span className="rounded-full bg-taken/10 px-2 py-0.5 text-[0.68rem] font-semibold text-taken">
               ⚔ {team.taken}/{team.effTaken}
             </span>
-            <span className="rounded-full px-2 py-0.5 text-[0.68rem] font-semibold" style={{ background: 'rgba(77,143,224,0.1)', color: '#5c9ae8' }}>
+            <span className="rounded-full bg-blocked/10 px-2 py-0.5 text-[0.68rem] font-semibold text-blocked">
               🛡 {team.blocked}/{team.effBlocked}
             </span>
             {team.missing.length > 0 && (
@@ -220,8 +220,7 @@ function AttackModal({ player, onClose }: { player: PlayerStats; onClose: () => 
                 {a.teams.map((t, ti) => (
                   <span
                     key={ti}
-                    className="flex-shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold"
-                    style={{ background: 'rgba(224,82,82,0.1)', color: '#f27676' }}
+                    className="flex-shrink-0 whitespace-nowrap rounded-full bg-taken/10 px-2 py-0.5 text-xs font-semibold text-taken"
                   >
                     vs {t}
                   </span>

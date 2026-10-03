@@ -46,7 +46,13 @@ export async function POST(req: NextRequest) {
     );
   }
   // Files are optional — a tournament can be created up front (just the
-  // roster + fixtures) and have its game JSON uploaded later via Edit.
-  const match = await createMatch({ ...body, files: Array.isArray(body.files) ? body.files : [] });
+  // roster + fixtures) and have its game JSON uploaded later via Edit. New
+  // tours always start included in stats — exclusion is a Tour Manager row
+  // action afterwards.
+  const match = await createMatch({
+    ...body,
+    files: Array.isArray(body.files) ? body.files : [],
+    excludeFromStats: false,
+  });
   return NextResponse.json(match, { status: 201 });
 }

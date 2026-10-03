@@ -1,6 +1,7 @@
 /**
  * Week arithmetic for the views that group tournaments by the week they were
- * played in — the Tour Manager's dividers between tours.
+ * played in — the week dividers between tours on the player home page and in
+ * the Tour Manager.
  *
  * Everything works off a tournament's `date`, stored as a plain `YYYY-MM-DD`
  * string and used as the tournaments' sort key (see `listMatchSummaries`).

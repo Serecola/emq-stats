@@ -2,9 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Theme tokens. Every palette color is an RGB triplet variable so Tailwind's
+ * opacity modifiers keep working (`rgb(var(--x) / <alpha-value>)` — see
+ * tailwind.config.ts). Light values live on `:root`, dark values under
+ * `.dark`; dark is the default because the root layout ships `class="dark"`
+ * on <html> and only a stored `light` choice removes it before first paint.
+ *
+ * The two ramps keep the same jobs in both themes: surfaces step bg →
+ * surface → surfaceAlt, `border` identifies outlines (3:1 against the
+ * surfaces), `borderSub` quietly separates rows, and the text ramp stays
+ * readable at every step (4.5:1 for content-carrying muted/dim text). Accent
+ * hues keep their family across themes and move one step darker/lighter so
+ * contrast survives the background flip.
+ */
+:root {
+  color-scheme: light;
+  --bg: 244 244 245;
+  --surface: 255 255 255;
+  --surface-alt: 235 235 240;
+  --border: 142 142 153;
+  --border-sub: 201 201 210;
+  --text: 23 23 26;
+  --text-sub: 63 63 70;
+  --text-muted: 85 85 94;
+  --text-dim: 109 109 120;
+  --taken: 196 58 58;
+  --blocked: 47 111 194;
+  --accent: 154 116 20;
+  --promote: 21 128 61;
+  --silver: 91 100 114;
+  --bronze: 154 90 36;
+  /* Per-team hues, darkened a step so names stay legible on white. */
+  --team-0: 122 79 208;
+  --team-1: 47 111 194;
+  --team-2: 47 143 58;
+  --team-3: 168 63 168;
+  --team-4: 178 90 26;
+  --team-5: 15 118 110;
+  /* Promotion-verdict badge washes: light tints behind darkened text. */
+  --exp-promote-bg: 21 128 61;
+  --exp-promote-text: 21 128 61;
+  --exp-near-promote-bg: 22 101 52;
+  --exp-near-promote-text: 22 101 52;
+  --exp-near-demote-bg: 220 38 38;
+  --exp-near-demote-text: 220 38 38;
+  --exp-demote-bg: 185 28 28;
+  --exp-demote-text: 153 27 27;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: 15 15 16;
+  --surface: 23 23 26;
+  --surface-alt: 29 29 33;
+  --border: 106 106 116;
+  --border-sub: 74 74 82;
+  --text: 242 242 243;
+  --text-sub: 200 200 204;
+  --text-muted: 160 160 170;
+  --text-dim: 138 138 149;
+  --taken: 227 90 90;
+  --blocked: 77 143 224;
+  --accent: 224 177 82;
+  --promote: 34 197 94;
+  --silver: 174 180 192;
+  --bronze: 192 122 78;
+  /* Deliberately light: these paint player names as text on dark surfaces. */
+  --team-0: 171 144 251;
+  --team-1: 109 168 239;
+  --team-2: 122 201 122;
+  --team-3: 221 154 222;
+  --team-4: 224 141 77;
+  --team-5: 95 209 201;
+  /* Faint washes behind lightened text — the tint lifts the background under
+     the label, so the text runs lighter than the plain-token reds/greens. */
+  --exp-promote-bg: 34 197 94;
+  --exp-promote-text: 34 197 94;
+  --exp-near-promote-bg: 134 239 172;
+  --exp-near-promote-text: 134 239 172;
+  --exp-near-demote-bg: 252 165 165;
+  --exp-near-demote-text: 252 165 165;
+  --exp-demote-bg: 224 82 82;
+  --exp-demote-text: 242 118 118;
+}
+
 html, body {
-  background: #0f0f10;
-  color: #f2f2f3;
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
 }
 
 /* Anchor jumps (the match page's section rail) and "back to top" glide

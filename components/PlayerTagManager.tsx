@@ -333,9 +333,9 @@ export default function PlayerTagManager({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
+        <table className="w-full border-collapse text-[0.75rem] sm:text-sm">
           <thead>
-            <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+            <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted sm:text-xs">
               <th className="px-3 py-2 font-medium">Username</th>
               <th
                 className="px-3 py-2 text-right font-medium"

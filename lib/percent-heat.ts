@@ -6,8 +6,9 @@ import type { CSSProperties } from 'react';
  * green, rather than a straight red-to-green blend, which would pass through a
  * muddy brown right where yellow should be. The piecewise ramp is linear in the
  * value in each half, so 0% is exactly red, 50% exactly yellow and 100% exactly
- * green. Everything is kept deliberately faint: the page is dark, so a low-alpha
- * tint reads as pastel and never fights the number sitting on it.
+ * green. Everything is kept deliberately faint — a low-alpha tint that reads as
+ * a wash over either theme's surfaces and never fights the number sitting on
+ * it — with full lightness so the hue survives on white as well as on dark.
  *
  * Values are clamped, so an impossible figure can't wrap the colour around, and
  * anything that isn't a number (the winrate dash) gets no style at all. Shared
@@ -22,5 +23,5 @@ export function percentHeat(value: number | null | undefined): CSSProperties | u
   if (value === null || value === undefined || !Number.isFinite(value)) return undefined;
   const t = Math.min(100, Math.max(0, value)) / 100;
   const hue = t <= 0.5 ? t * 120 : 60 + (t - 0.5) * 160; // 0° red, 60° yellow, 140° green
-  return { backgroundColor: `hsl(${hue.toFixed(0)} 72% 55% / 0.180)` };
+  return { backgroundColor: `hsl(${hue.toFixed(0)} 75% 55% / 0.22)` };
 }

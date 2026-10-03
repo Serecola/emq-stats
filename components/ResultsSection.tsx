@@ -3,9 +3,9 @@ import { teamColor } from '@/lib/team-colors';
 import type { MatchResults, TeamResult } from '@/lib/results';
 
 const PODIUM_STYLES = [
-  { place: '1st', bg: 'bg-[#e0b152]/10', border: 'border-[#e0b152]/40', text: 'text-[#e0b152]', order: 'sm:order-2' },
-  { place: '2nd', bg: 'bg-[#c4c4c4]/10', border: 'border-[#c4c4c4]/40', text: 'text-[#c4c4c4]', order: 'sm:order-1' },
-  { place: '3rd', bg: 'bg-[#c97a4d]/10', border: 'border-[#c97a4d]/40', text: 'text-[#c97a4d]', order: 'sm:order-3' },
+  { place: '1st', bg: 'bg-accent/10', border: 'border-accent/40', text: 'text-accent', order: 'sm:order-2' },
+  { place: '2nd', bg: 'bg-silver/10', border: 'border-silver/40', text: 'text-silver', order: 'sm:order-1' },
+  { place: '3rd', bg: 'bg-bronze/10', border: 'border-bronze/40', text: 'text-bronze', order: 'sm:order-3' },
 ];
 
 export default function ResultsSection({
@@ -61,9 +61,9 @@ export default function ResultsSection({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
+        <table className="w-full border-collapse text-[0.75rem] sm:text-sm">
           <thead>
-            <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+            <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted sm:text-xs">
               <th className="px-3 py-2 font-medium">Rank</th>
               <th className="px-3 py-2 font-medium">Participant</th>
               <th className="px-3 py-2 text-right font-medium">Match W-L-T</th>

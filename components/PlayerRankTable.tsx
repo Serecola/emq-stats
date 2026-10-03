@@ -209,9 +209,9 @@ export default function PlayerRankTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      <table className="w-full min-w-[720px] border-collapse text-sm">
+      <table className="w-full border-collapse text-[0.75rem] sm:text-sm">
         <thead>
-          <tr className="border-b border-border bg-surfaceAlt text-left text-xs uppercase tracking-wide text-textMuted">
+          <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted sm:text-xs">
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}
@@ -244,7 +244,7 @@ export default function PlayerRankTable({
                   // an inline background outranks the class either way.
                   className={`px-3 py-2 ${
                     c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted'
-                  } ${hoveredCol === c.key && !c.cellStyle ? 'bg-white/5' : ''} ${c.className ?? ''}`}
+                  } ${hoveredCol === c.key && !c.cellStyle ? 'bg-text/5' : ''} ${c.className ?? ''}`}
                   style={c.cellStyle?.(row)}
                   onMouseEnter={() => setHoveredCol(c.key)}
                   onMouseLeave={() => setHoveredCol(null)}

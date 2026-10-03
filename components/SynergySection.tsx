@@ -27,7 +27,7 @@ const KEY_OF: Record<SortKey, (m: SynergyMember) => number | string> = {
 };
 
 function heat(rate: number): string {
-  if (rate >= 50) return 'text-[#f27676]';
+  if (rate >= 50) return 'text-taken';
   if (rate >= 25) return 'text-accent';
   return 'text-textSub';
 }
@@ -186,7 +186,7 @@ function MemberReadsTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`} style={{ minWidth: 760 }}>
+      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
         <thead>
           <tr className={`border-b border-border bg-surfaceAlt uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
             <th className={`${DENSE_CELL_PAD} w-8 text-left font-medium`}>#</th>
