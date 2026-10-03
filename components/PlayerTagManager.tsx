@@ -7,6 +7,7 @@ import { isAutoBot, resolvePlayerTag, type PlayerTagOverrides } from '@/lib/play
 import type { PlayerAliases } from '@/lib/player-aliases';
 import type { PlayerTag } from '@/lib/types';
 import { withBasePath } from '@/lib/base-path';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
 type Filter = 'all' | 'bot' | 'human';
 type SaveStatus = 'saving' | 'saved' | 'error';
@@ -365,7 +366,7 @@ export default function PlayerTagManager({
               return (
                 <tr
                   key={key}
-                  className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+                  className={TABLE_ROW_CLASS}
                 >
                   <td className="px-3 py-2 font-medium">
                     {renamingFor === key ? (

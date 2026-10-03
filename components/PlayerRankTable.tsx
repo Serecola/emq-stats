@@ -5,6 +5,7 @@ import { useState, type CSSProperties } from 'react';
 import { compareValues, percentHeat, SortableHeader, toggleSort, type SortDir } from '@/components/SortableTable';
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerRankInput from '@/components/PlayerRankInput';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import type { PlayerRankRow } from '@/lib/player-ranks';
 import type { Mode, Submode } from '@/lib/types';
 
@@ -234,7 +235,7 @@ export default function PlayerRankTable({
           {sortedRows.map((row) => (
             <tr
               key={row.playerKey}
-              className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+              className={TABLE_ROW_CLASS}
             >
               {columns.map((c) => (
                 <td

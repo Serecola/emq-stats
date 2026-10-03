@@ -14,6 +14,7 @@ import {
   type SortDir,
 } from './SortableTable';
 import PlayerTagBadge from './PlayerTagBadge';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
 type SortKey = 'uname' | 'ally' | 'enemy' | 'readAlly' | 'readEnemy' | 'songs';
 
@@ -104,7 +105,7 @@ function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
           {teams.map((team, i) => (
             <tr
               key={team.teamIndex}
-              className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+              className={TABLE_ROW_CLASS}
             >
               <td className={`${DENSE_CELL_PAD} text-textDim`}>{i + 1}</td>
               <td className={DENSE_CELL_PAD}>
@@ -215,7 +216,7 @@ function MemberReadsTable({
                 {members.map((m, i) => (
                   <tr
                     key={`${team.teamIndex}-${m.uname}`}
-                    className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+                    className={TABLE_ROW_CLASS}
                   >
                     <td className={`${DENSE_CELL_PAD} text-textDim`}>{i + 1}</td>
                     <td className={DENSE_CELL_PAD}>

@@ -398,6 +398,12 @@ would compute over the same tournaments. Avg Rig is the mean on-list (rig)
 guess count per tournament in view; the other three are percentages, `—` while
 the range has nothing to divide.
 
+In Erumode Normal **VN Exp** (VN Expected Rank) folds in and out from the VN
+column itself: the **VN** header sorts like every other column, while
+clicking the column's cells opens VN Exp directly beside VN — between **GR**
+and **Artist** — and clicks it shut again. VN GR stays out of the expansion
+because the VN column already shows that number.
+
 Every rate column in the Erumode block — the five answer types plus **Rig GR**
 and **Off GR** — medals its best three rather than shading them all: gold to the
 highest, silver to the next, bronze to the third (`MEDAL_CLASSES` /
@@ -410,6 +416,14 @@ than handing gold to a zero; ties are broken by name and the medals are computed
 from the unsorted rows, so sorting the list never moves one. Winrate and Guess
 Rate keep the `percentHeat` gradient — the two figures the admin table shades
 the same way.
+
+A **search box** across the card's top right narrows the list to the usernames
+containing what was typed — a case-insensitive substring match, the same rule
+the Player Manager's list filters with. It runs client-side like the sorting,
+so typing never re-renders the server page, and a count beside it shows how
+much of the list is left while a search is active. The search only ever hides
+rows: medals are still computed over every player, so a search can never move
+one.
 
 ### Player Tags tab
 

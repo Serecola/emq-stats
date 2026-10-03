@@ -5,6 +5,7 @@ import type { MatchStats, PlayerStats, PlayerTag, TeamStats } from '@/lib/types'
 import { teamColor } from '@/lib/team-colors';
 import { SortableHeader, toggleSort, compareValues, STATS_BODY_TEXT, STATS_HEADER_TEXT, type SortDir } from './SortableTable';
 import PlayerTagBadge from './PlayerTagBadge';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
 type SortKey = 'uname' | 'correct' | 'taken' | 'blocked';
 
@@ -142,7 +143,7 @@ function TeamRows({
       {members.map((m, i) => (
         <tr
           key={m.uname}
-          className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+          className={TABLE_ROW_CLASS}
         >
           <td className={`px-3 py-2 text-textDim ${STATS_BODY_TEXT}`}>{i + 1}</td>
           <td className="px-3 py-2">

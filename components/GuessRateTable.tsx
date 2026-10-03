@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
 import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
 import { teamColor } from '@/lib/team-colors';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import ExpectationBadge from './ExpectationBadge';
 import PlayerTagBadge from './PlayerTagBadge';
 import { SortableHeader, toggleSort, compareValues, DENSE_CELL_PAD, STATS_BODY_TEXT, STATS_HEADER_TEXT, type SortDir } from './SortableTable';
@@ -128,17 +129,19 @@ function GenericSortableTable<T extends { uname: string }>({
           {sortedRows.map((row) => {
             const tier = rowTier?.(row) ?? null;
             const bg = tier !== null ? TIER_BG[tier] : undefined;
-            // Tinted rows hover with a neutral wash rather than brightening:
-            // `brightness-125` over a white page pushes the row toward white
-            // and reads as *less* highlight, while a translucent text-color
-            // overlay deepens it in both themes.
+            // The tier tint rides on a CSS variable rather than straight into
+            // `style.backgroundColor`: an inline background-color outranks any
+            // :hover class, so an inline tint used to keep the row's wash from
+            // ever showing — tinted rows highlighted nowhere. As a class,
+            // TABLE_ROW_CLASS's hover simply takes over while the pointer is
+            // on the row, and the text-colour wash deepens the tint in both
+            // themes (a `brightness-125` over a white page would push it the
+            // wrong way, which is why the hover is a wash at all).
             return (
               <tr
                 key={row.uname}
-                style={bg ? { backgroundColor: bg } : undefined}
-                className={`border-b border-borderSub transition-colors last:border-b-0 ${
-                  bg ? 'hover:bg-text/[0.07]' : 'hover:bg-surfaceAlt/50'
-                }`}
+                style={bg ? ({ '--row-tint': bg } as CSSProperties) : undefined}
+                className={`${TABLE_ROW_CLASS}${bg ? ' bg-[var(--row-tint)]' : ''}`}
               >
                 {columns.map((c) => (
                   <td

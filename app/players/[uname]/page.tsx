@@ -5,6 +5,7 @@ import PlayerTagBadge from '@/components/PlayerTagBadge';
 import ModeToggle from '@/components/ModeToggle';
 import StatsRangeToggle from '@/components/StatsRangeToggle';
 import { slicePlayerSummary, type PlayerMatchEntry } from '@/lib/player-stats';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import {
   matchFilterLabel,
   matchFilterQuery,
@@ -218,7 +219,7 @@ function MatchHistoryTable({
         </thead>
         <tbody>
           {entries.map((e) => (
-            <tr key={e.matchId} className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50">
+            <tr key={e.matchId} className={TABLE_ROW_CLASS}>
               <td className="px-3 py-2">
                 <Link href={`/matches/${e.matchId}`} className="font-medium hover:underline">
                   {e.matchTitle}

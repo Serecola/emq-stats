@@ -12,6 +12,7 @@ import {
 } from '@/components/SortableTable';
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import type { PlayerTagOverrides } from '@/lib/player-tags';
 import type { ErumodeSplitStats, PlayerSummary } from '@/lib/player-stats';
 import type { PlayerRankRow } from '@/lib/player-ranks';
@@ -108,6 +109,12 @@ interface Column {
   cellClassName?: (row: PlayerRow) => string;
   /** Body-cell tooltip that varies per row — the Tours "last 5 of 12" hint. */
   cellTitle?: (row: PlayerRow) => string;
+  /**
+   * Click handler for the cell body itself. Its one user is the VN column in
+   * Erumode Normal: the header sorts like every column's, and clicking the
+   * cells folds VN Expected Rank in and out (see the split block below).
+   */
+  cellOnClick?: () => void;
 }
 
 /**
@@ -126,6 +133,12 @@ interface Column {
  * purpose — 0.65rem headers, xs figures, halved side padding — because fifteen
  * columns of short numbers leave nothing to gain from generous type, and the
  * width saved is width the figures get instead.
+ *
+ * A search box sits across the card's top right and narrows the rows to the
+ * usernames matching it — a case-insensitive substring match, held in
+ * component state like the sort, so typing never re-renders the server page.
+ * It only ever hides rows: the medals are still computed over every player, so
+ * a search can hide a name without moving a medal off it.
  */
 export default function PlayerListTable({
   players,
@@ -147,17 +160,26 @@ export default function PlayerListTable({
 }) {
   const [sortKey, setSortKey] = useState<string | null>('setRank');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  // Collapsed VN group for Erumode Normal — same Mst-only figures as the
-  // Player Manager's VN columns. One "VN ▸ / ▾" toggle header that expands
-  // into VN Guess Rate + VN Expected Rank; a plain <th> so it never sorts.
+  // Collapsed VN group for Erumode Normal — the same Mst-only figure the
+  // Player Manager shows. VN Expected Rank folds in and out from the VN
+  // column itself (the split block's main-title rate, between GR and Artist):
+  // the header sorts like every other column, while clicking the column's
+  // cells expands VN Exp beside it, so the control sits where the figure
+  // belongs rather than trailing the row. VN GR still gets no column of its
+  // own, because the split VN column already carries that number.
   const showVn = mode === 'Erumode' && submode === 'Normal';
   const [vnOpen, setVnOpen] = useState(false);
+  // The search box's text: rows whose username doesn't contain it (lowercased,
+  // substring match — the same rule the Player Manager's list filters with) are
+  // hidden. Component state like the sort, so typing narrows the list instantly
+  // without a round-trip to the server-rendered page.
+  const [query, setQuery] = useState('');
 
-  // VN-only (Mst) figures over the same range the row's other stats use:
-  // rank-row values when the player has a ladder row, else the sliced
-  // aggregate straight from the entries. Null when no Mst was measured.
-  const vnGrOf = (r: PlayerRow): number | null =>
-    isErumode ? (r.rank?.vnGuessRate ?? r.player.erumode.vnGuessRate) : null;
+  // VN-only (Mst) figure over the same range the row's other stats use: the
+  // rank-row value when the player has a ladder row, else the sliced aggregate
+  // straight from the entries. Null when no Mst was measured. (VN Guess Rate
+  // needs no accessor of its own — the split block's VN column already
+  // renders it.)
   const vnExpOf = (r: PlayerRow): number | null =>
     isErumode ? (r.rank?.vnExpectedRank ?? r.player.erumode.vnExpectedRank) : null;
   const isErumode = mode === 'Erumode';
@@ -333,19 +355,60 @@ export default function PlayerListTable({
   // of these columns exist there.
   if (isErumode) {
     columns.push(
-      ...SPLIT_TYPES.map<Column>((t) => ({
-        key: `split-${t.type}`,
-        label: t.label,
-        title: `${t.title} — % of guesses of this answer type that were correct (gold, silver and bronze go to the best three)`,
-        accessor: (r) => r.split?.perType[t.type] ?? missing(),
-        // No heat here: the medal says more than a shade across five columns
-        // that would otherwise all look alike.
-        cellClassName: (r) => medalFor(t.type, r),
-        render: (r) => {
-          const value = r.split?.perType[t.type];
-          return value === undefined ? <span className="text-textDim">—</span> : pct(value);
-        },
-      })),
+      ...SPLIT_TYPES.flatMap<Column>((t) => {
+        // In Erumode Normal the VN column splits its two jobs: the header
+        // sorts (like every column's), the cells are the VN Exp fold — so the
+        // cells carry the pointer cursor, the hover hint, and the toggle
+        // itself. Everywhere else VN is an ordinary sortable column.
+        const isVnToggle = t.type === 'Mst' && showVn;
+        const splitColumn: Column = {
+          key: `split-${t.type}`,
+          label: t.label,
+          title: `${t.title} — % of guesses of this answer type that were correct (gold, silver and bronze go to the best three)${
+            isVnToggle ? ' (header sorts — click a cell to show/hide VN Expected Rank)' : ''
+          }`,
+          accessor: (r) => r.split?.perType[t.type] ?? missing(),
+          // No heat here: the medal says more than a shade across five columns
+          // that would otherwise all look alike.
+          cellClassName: (r) => medalFor(t.type, r) + (isVnToggle ? ' cursor-pointer' : ''),
+          cellTitle: isVnToggle ? () => 'Click to show/hide VN Expected Rank (Mst answers only)' : undefined,
+          cellOnClick: isVnToggle
+            ? () => {
+                // Collapsing while VN Exp holds the sort parks the list back
+                // on Set Rank — the column is leaving the screen.
+                if (vnOpen && sortKey === 'vnExpectedRank') {
+                  setSortKey('setRank');
+                  setSortDir('desc');
+                }
+                setVnOpen((v) => !v);
+              }
+            : undefined,
+          render: (r) => {
+            const value = r.split?.perType[t.type];
+            return value === undefined ? <span className="text-textDim">—</span> : pct(value);
+          },
+        };
+        // VN Expected Rank rides directly behind the VN column whose cells
+        // fold it — Mst answers only, pooled over the same range as every
+        // other figure — so the pair opens in place between GR and Artist
+        // instead of appearing at the far end of the row.
+        if (isVnToggle && vnOpen) {
+          return [
+            splitColumn,
+            {
+              key: 'vnExpectedRank',
+              label: 'VN Exp',
+              title: 'VN Expected Rank — songs-weighted mean of each tournament\u2019s VN-only Performance (same rating curve, Mst rate in)',
+              accessor: (r: PlayerRow) => vnExpOf(r) ?? missing(),
+              render: (r: PlayerRow) => {
+                const exp = vnExpOf(r);
+                return exp == null ? <span className="text-textDim">—</span> : exp.toFixed(2);
+              },
+            } as Column,
+          ];
+        }
+        return [splitColumn];
+      }),
       {
         key: 'avgRig',
         label: 'Avg Rig',
@@ -382,34 +445,6 @@ export default function PlayerListTable({
           return value == null ? <span className="text-textDim">—</span> : pct(value);
         },
       },
-      // Collapsed VN group for Erumode Normal: Mst answers only, pooled over
-      // the same range as every other figure (songs-weighted VN Guess Rate,
-      // songs-weighted mean of each tournament's VN-only Performance).
-      ...(showVn && vnOpen
-        ? [
-            {
-              key: 'vnGuessRate',
-              label: 'VN GR',
-              title: 'VN Guess Rate — Mst (main-title) answers only, pooled songs-weighted over the same range',
-              accessor: (r: PlayerRow) => vnGrOf(r) ?? missing(),
-              cellStyle: (r: PlayerRow) => percentHeat(vnGrOf(r)),
-              render: (r: PlayerRow) => {
-                const gr = vnGrOf(r);
-                return gr == null ? <span className="text-textDim">—</span> : pct(gr);
-              },
-            } as Column,
-            {
-              key: 'vnExpectedRank',
-              label: 'VN Exp',
-              title: 'VN Expected Rank — songs-weighted mean of each tournament\u2019s VN-only Performance (same rating curve, Mst rate in)',
-              accessor: (r: PlayerRow) => vnExpOf(r) ?? missing(),
-              render: (r: PlayerRow) => {
-                const exp = vnExpOf(r);
-                return exp == null ? <span className="text-textDim">—</span> : exp.toFixed(2);
-              },
-            } as Column,
-          ]
-        : []),
     );
   }
 
@@ -450,18 +485,46 @@ export default function PlayerListTable({
     toggleSort(key, sortKey, sortDir, key === 'uname' ? 'asc' : 'desc', setSortKey, setSortDir);
   }
 
+  // What the search box keeps: a case-insensitive substring match on the
+  // displayed username. Medals were computed from every player above, so this
+  // only decides which rows reach the sort — narrowing the list can hide a row
+  // but never reassign a medal.
+  const q = query.trim().toLowerCase();
+  const visible = q ? players.filter((r) => r.player.uname.toLowerCase().includes(q)) : players;
+
   // The table opens on Set Rank descending (see the state above), so this only
-  // has to re-sort when a header is clicked.
+  // has to re-sort when a header is clicked or the search narrows the list.
   const activeColumn = columns.find((c) => c.key === sortKey) ?? null;
   const sorted =
     sortKey === null || !activeColumn
-      ? players
-      : [...players].sort((a, b) =>
+      ? visible
+      : [...visible].sort((a, b) =>
           compareValues(activeColumn.accessor(a), activeColumn.accessor(b), sortDir)
         );
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+      {/* The search sits across the card's top right: a right-aligned toolbar
+          so the box lines up with the table's right edge. The count only
+          appears while a search is active, so it reads as "how much of the
+          list is left" rather than restating the total under the page header. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-2 py-2">
+        {q && (
+          <span className="text-xs text-textMuted">
+            {sorted.length} of {players.length} player{players.length !== 1 ? 's' : ''}
+          </span>
+        )}
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search player…"
+          aria-label="Search players"
+          autoComplete="off"
+          spellCheck={false}
+          className="w-40 rounded-md border border-border bg-surfaceAlt px-2.5 py-1 text-xs outline-none placeholder:text-textDim focus:border-accent"
+        />
+      </div>
       {/* No fixed floor under the columns: without one they shrink to their
           content, so the table scales down with the viewport instead of forcing
           a horizontal scrollbar — which is what lets the wide Erumode column
@@ -472,6 +535,10 @@ export default function PlayerListTable({
       <table className="w-full border-collapse text-[0.7rem] sm:text-xs">
         <thead>
           <tr className="border-b border-border bg-surfaceAlt text-left text-[0.6rem] uppercase tracking-wide text-textMuted sm:text-[0.65rem]">
+            {/* Every header sorts, VN in Erumode Normal included — its
+                Expected Rank folds from the column's cells instead (see
+                cellOnClick on the split block), with the hint carried by the
+                header's hover title and the cells' pointer cursor. */}
             {columns.map((c) => (
               <SortableHeader
                 key={c.key}
@@ -485,38 +552,32 @@ export default function PlayerListTable({
                 pad={DENSE_CELL_PAD}
               />
             ))}
-            {showVn && (
-              <th
-                key="vn-toggle"
-                title={vnOpen ? 'Collapse VN columns' : 'Expand: VN Guess Rate + VN Expected Rank (Mst answers only)'}
-                className={`cursor-pointer select-none whitespace-nowrap ${DENSE_CELL_PAD} text-right font-medium hover:text-textSub`}
-                onClick={() => {
-                  if (vnOpen && (sortKey === 'vnGuessRate' || sortKey === 'vnExpectedRank')) {
-                    setSortKey('setRank');
-                    setSortDir('desc');
-                  }
-                  setVnOpen((v) => !v);
-                }}
-              >
-                <span className="inline-flex items-center gap-0.5">
-                  VN
-                  <span className="w-2 text-[0.6rem] text-textDim">{vnOpen ? '▾' : '▸'}</span>
-                </span>
-              </th>
-            )}
           </tr>
         </thead>
         <tbody>
+          {/* An active search can match nothing — say so inside the card
+              rather than leaving an empty grid under the headers. */}
+          {sorted.length === 0 && (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="px-3 py-8 text-center text-sm text-textMuted"
+              >
+                No players match &ldquo;{query.trim()}&rdquo;.
+              </td>
+            </tr>
+          )}
           {sorted.map((r) => (
             <tr
               key={r.player.uname}
-              className="border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50"
+              className={TABLE_ROW_CLASS}
             >
               {columns.map((c) => (
                 <td
                   key={c.key}
                   style={c.cellStyle?.(r)}
                   title={c.cellTitle?.(r)}
+                  onClick={c.cellOnClick}
                   className={`${DENSE_CELL_PAD} ${
                     c.key === 'uname'
                       ? 'whitespace-nowrap font-medium'
@@ -526,15 +587,6 @@ export default function PlayerListTable({
                   {c.render(r)}
                 </td>
               ))}
-              {showVn && !vnOpen && (
-                <td
-                  key="vn-collapsed"
-                  className={`${DENSE_CELL_PAD} text-right text-textDim`}
-                  title="Expand VN for VN Guess Rate + VN Expected Rank (Mst answers only)"
-                >
-                  —
-                </td>
-              )}
             </tr>
           ))}
         </tbody>

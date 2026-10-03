@@ -1,7 +1,11 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  // lib/ is scanned as well: it carries the shared row class (lib/table-row.ts),
+  // and a Tailwind utility only becomes CSS if the file holding its literal is
+  // in this list — class strings in lib would otherwise render in the markup
+  // with no rule behind them.
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   // Class-driven themes: every color below resolves to a CSS variable whose
   // value flips with the `dark` class on <html> (see globals.css — light
   // values on `:root`, dark values under `.dark`). Dark is the default: the

@@ -570,12 +570,6 @@ export default function MatchForm({
         <div>
           <label className="mb-1 block text-xs font-medium text-textMuted">
             Teams{' '}
-            {existing && (
-              <span className="text-textDim">
-                (editable — the first name in each line is that team&apos;s label,
-                which its scores are stored under)
-              </span>
-            )}
           </label>
           <textarea
             value={teamsText}
@@ -640,10 +634,6 @@ export default function MatchForm({
           <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <label className="block text-xs font-medium text-textMuted">
               Bracket{' '}
-              <span className="text-textDim">
-                (drag a JSON export onto a match — or batch upload several — then
-                enter scores for each matchup)
-              </span>
             </label>
             <div className="flex flex-wrap items-center gap-2">
               {/* Batch upload: several exports in one go, each matched to a

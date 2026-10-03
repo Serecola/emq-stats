@@ -1,6 +1,7 @@
 import { norm } from '@/lib/stats';
 import { teamColor } from '@/lib/team-colors';
 import type { MatchResults, TeamResult } from '@/lib/results';
+import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
 const PODIUM_STYLES = [
   { place: '1st', bg: 'bg-accent/10', border: 'border-accent/40', text: 'text-accent', order: 'sm:order-2' },
@@ -79,9 +80,7 @@ export default function ResultsSection({
             {results.rankings.map((r: TeamResult) => (
               <tr
                 key={r.teamIndex}
-                className={`border-b border-borderSub transition-colors last:border-b-0 hover:bg-surfaceAlt/50 ${
-                  r.rank <= 3 ? 'bg-accent/5' : ''
-                }`}
+                className={`${TABLE_ROW_CLASS} ${r.rank <= 3 ? 'bg-accent/5' : ''}`}
               >
                 <td className="px-3 py-2 font-medium text-textSub">{r.rank}</td>
                 <td className="px-3 py-2 font-medium">
