@@ -605,3 +605,41 @@ names no two roster teams — is left exactly as entered.
   file** — since one match file usually only involves 2 of the teams in a
   larger roster, only the team(s) whose players actually appear in that file
   are listed as attack targets.
+## Most played VNs
+
+The Stats section ends with **Most Played VNs**: the visual novels a tournament
+drew from most, as a ranked table of plays. It reads the same scoped files as
+everything else on that page, so the round/game selector narrows it like the
+rest — select one game and it answers "which VNs came up *in that game*".
+
+A **play** is one song from that VN appearing in a song history — one game
+asking one song — so the same track asked in three games is three plays. Plays
+are therefore comparable between VNs, but the count says nothing about how large
+a VN's catalogue is: three one-song entries can outrank a single three-track
+entry.
+
+Two rules keep the list about popularity rather than long-tail noise:
+
+- **At least 2 plays** (`VN_MIN_PLAYS` in `lib/vn-plays.ts`). A VN that came up
+  exactly once is a fact about the song draw, not a preference, and ranking
+  those would make most of the table read "every other VN appeared once". The
+  footnote under the table says how many VNs the floor cut.
+- **Top 10** (`VN_TOP_N`), which is the whole point of the section — anything
+  past ten rows is the same claim, further down.
+
+When nothing in scope cleared the floor the block is left off the page entirely
+— table, heading and jump-rail entry together — rather than shown empty.
+
+VNs are grouped by the game's own source id (`Sources[0].Id`, read by
+`getVNSource` in `lib/stats.ts`) rather than by title text, so two songs of one
+VN can't split across rows over a spelling or main-title difference between
+uploads; an export carrying no id falls back to grouping on the title. The name
+shown is the export's own main title, which is the same string the attack modal
+in Attacks & Blocks already prints for that VN — both read `getVNName`.
+
+The name links to the VN's page on VNDB, taken from that song source's `Links`
+by `Type: "VNDB"` — the same array also holds a `SelfSource` link back to the
+quiz's own page plus Wikidata/EGS/VGMdb entries, and only the VNDB one is a link
+*to the VN*. It opens in a new tab (`rel="noreferrer"`) so the tournament page
+stays put, and a VN whose source carries no VNDB link renders as plain text
+rather than a dead link.

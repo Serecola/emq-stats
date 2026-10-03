@@ -17,6 +17,7 @@ import {
   matchFilesToBracket,
   isValidTeamCount,
   exportDisplayLabel,
+  fileContentSignature,
 } from '@/lib/schedule';
 import { formatMatchTitle } from '@/lib/match-title';
 import { extractUsernames } from '@/lib/stats';
@@ -165,19 +166,58 @@ export default function MatchForm({
   );
   const draftById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files]);
 
-  // Parse every file's JSON once per render pass for the rename panel.
-  const parsedFileData = useMemo(() => {
-    const result: Record<string, unknown> = {};
+  // Parse every file's JSON once per render pass for the rename panel, and
+  // fingerprint it in the same pass for the duplicate check below — an export
+  // is ~100 kB, so parsing the whole set twice per render isn't worth it.
+  const parsedDrafts = useMemo(() => {
+    const data: Record<string, unknown> = {};
+    const signatures: Record<string, string> = {};
     for (const f of files) {
       if (!f.text.trim()) continue;
       try {
-        result[f.id] = JSON.parse(f.text);
+        const parsed = JSON.parse(f.text);
+        data[f.id] = parsed;
+        signatures[f.id] = fileContentSignature(parsed);
       } catch {
         // Invalid JSON is surfaced separately at submit time.
       }
     }
-    return result;
+    return { data, signatures };
   }, [files]);
+
+  // Drafts holding the same game as an earlier draft. One export is one game,
+  // so a byte-identical copy is never legitimate — it would be counted twice
+  // in every aggregate that walks `files` (and in the tournament's own
+  // games-played count), and `matchFilesToBracket` would place it on the pair's
+  // *other* fixture, passing it off as the rematch leg.
+  //
+  // Grouped rather than listed flat so the panel can name the original the
+  // copies duplicate, and so removing the first copy of a group promotes the
+  // next one instead of leaving a duplicate behind. Drafts with no signature
+  // (empty score placeholders, unparseable text) can't be compared and are
+  // left out.
+  const duplicateGroups = useMemo(() => {
+    const bySignature = new Map<string, string[]>();
+    for (const f of files) {
+      const sig = parsedDrafts.signatures[f.id];
+      if (!sig) continue;
+      const group = bySignature.get(sig);
+      if (group) group.push(f.id);
+      else bySignature.set(sig, [f.id]);
+    }
+    return [...bySignature.values()]
+      .filter((ids) => ids.length > 1)
+      .map((ids) => ({
+        // First one wins the slot; the rest are the copies.
+        original: draftById.get(ids[0])!,
+        copies: ids.slice(1).map((id) => draftById.get(id)!),
+      }));
+  }, [files, parsedDrafts.signatures, draftById]);
+
+  const duplicateIds = useMemo(
+    () => new Set(duplicateGroups.flatMap((g) => g.copies.map((c) => c.id))),
+    [duplicateGroups]
+  );
 
   // Every username, across every uploaded file, that doesn't match anyone
   // in the pasted roster. Computed from the raw JSON only (not affected by
@@ -186,14 +226,14 @@ export default function MatchForm({
   const unmatchedNames = useMemo(() => {
     if (rosterNames.length === 0) return [];
     const firstSeen = new Map<string, string>();
-    for (const data of Object.values(parsedFileData)) {
+    for (const data of Object.values(parsedDrafts.data)) {
       for (const u of extractUsernames(data)) {
         const key = norm(u);
         if (!rosterSetNorm.has(key) && !firstSeen.has(key)) firstSeen.set(key, u);
       }
     }
     return [...firstSeen.entries()]; // [normalizedKey, rawName][]
-  }, [parsedFileData, rosterNames, rosterSetNorm]);
+  }, [parsedDrafts, rosterNames, rosterSetNorm]);
 
   function setRename(oldNameNorm: string, newName: string) {
     setRenames((prev) => {
@@ -334,6 +374,16 @@ export default function MatchForm({
     }
     if (!isValidTeamCount(parsedTeams.length)) {
       setFormError(`Tournaments must have exactly 4 or 6 teams (got ${parsedTeams.length}).`);
+      return;
+    }
+    // Refuse to save a duplicate rather than silently dropping it. Silently
+    // keeping the first would make the form disagree with what the admin sees,
+    // and silently keeping the last could throw away entered scores — asking is
+    // the only honest option, and the panel above says which file to remove.
+    if (duplicateIds.size > 0) {
+      setFormError(
+        `Remove the duplicate upload${duplicateIds.size === 1 ? '' : 's'} listed below first — the same game attached twice is counted twice everywhere.`
+      );
       return;
     }
 
@@ -838,6 +888,40 @@ export default function MatchForm({
                   </option>
                 ))}
               </select>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {duplicateGroups.length > 0 && (
+        <div className="space-y-2 rounded-md border border-taken/30 bg-taken/5 p-3">
+          <p className="text-xs text-taken">
+            {duplicateIds.size} of your uploads{' '}
+            {duplicateIds.size === 1 ? 'is an exact copy' : 'are exact copies'} of another file
+            already attached — same game, same data. Each one would count that game twice in
+            every player&apos;s stats and in the tournament&apos;s games-played count, and would
+            fill the other fixture of that pair as if it were the rematch. Remove{' '}
+            {duplicateIds.size === 1 ? 'the copy' : 'the copies'} before saving.
+          </p>
+          {duplicateGroups.map((g) => (
+            <div key={g.original.id} className="space-y-1.5">
+              {g.copies.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate font-mono text-xs text-textSub">
+                    {exportDisplayLabel(c.label) || c.id}
+                    <span className="ml-1 font-sans text-textDim">
+                      (identical to {exportDisplayLabel(g.original.label) || g.original.id})
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(c.id, exportDisplayLabel(c.label) || c.id)}
+                    className="flex-shrink-0 text-xs text-textDim hover:text-taken"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
           ))}
         </div>

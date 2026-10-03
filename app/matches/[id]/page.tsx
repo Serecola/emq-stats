@@ -17,12 +17,14 @@ import {
 import { computeMatchResults } from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
 import { computeSynergyStats, type SynergyStats } from '@/lib/synergy';
+import { computeVnPlays, type VnPlayStats } from '@/lib/vn-plays';
 import { hasAdminSession } from '@/lib/admin-session';
 import StatsTable from '@/components/StatsTable';
 import GuessRateTable from '@/components/GuessRateTable';
 import ResultsSection from '@/components/ResultsSection';
 import MvpSection from '@/components/MvpSection';
 import SynergySection from '@/components/SynergySection';
+import VnPlaysSection from '@/components/VnPlaysSection';
 import RoundRobinGrid from '@/components/RoundRobinGrid';
 import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
 import BackToTop from '@/components/BackToTop';
@@ -154,19 +156,31 @@ export default async function MatchPage({
     synergyError = err;
   }
 
+  // Which visual novels the room drew from, and how often. Reads the same
+  // scoped files as everything else above, so it narrows with the round/game
+  // selector too, and is computed for both modes — a VN is asked for in either.
+  let vnPlays: VnPlayStats | null = null;
+  let vnPlaysError: unknown = null;
+  try {
+    vnPlays = computeVnPlays(scopedMatch);
+  } catch (err) {
+    vnPlaysError = err;
+  }
+
   // Jump targets for the left-hand rail (MatchSectionNav). Listed in the order
   // they appear and gated on the same conditions that render each block, so a
   // link never points at a section that isn't on the page — the NGMC-only
-  // Attacks & Blocks table and the synergy block (which hides itself when no
-  // song in scope produced a chance) are both conditional. The MVP block sits
-  // inside Results and isn't listed: it's part of that section, not a
-  // destination of its own.
+  // Attacks & Blocks table and the synergy and VN blocks (which hide
+  // themselves when no song in scope produced a chance / no VN was played
+  // twice) are all conditional. The MVP block sits inside Results and isn't
+  // listed: it's part of that section, not a destination of its own.
   const jumpSections: JumpSection[] = [
     { id: 'bracket', label: 'Bracket' },
     { id: 'results', label: 'Results' },
     { id: 'stats', label: 'Stats' },
     ...(isNgmc && matchStats ? [{ id: 'attacks-blocks', label: 'Attacks & Blocks', nested: true }] : []),
     ...(synergyStats?.hasData ? [{ id: 'team-synergy', label: 'Team Synergy', nested: true }] : []),
+    ...(vnPlays?.hasData ? [{ id: 'most-played-vns', label: 'Most Played VNs', nested: true }] : []),
   ];
 
   return (
@@ -293,6 +307,17 @@ export default async function MatchPage({
               Team Synergy
             </h3>
             <SynergySection stats={synergyStats} playerTags={playerTags} />
+          </div>
+        ) : null}
+
+        {vnPlaysError ? (
+          <ErrorBox label="Most Played VNs" err={vnPlaysError} />
+        ) : vnPlays?.hasData ? (
+          <div id="most-played-vns" className="scroll-mt-16">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-textMuted">
+              Most Played VNs
+            </h3>
+            <VnPlaysSection stats={vnPlays} />
           </div>
         ) : null}
       </section>

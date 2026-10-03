@@ -48,6 +48,39 @@ export function getArtistNames(song: any): string {
   return names.join(', ');
 }
 
+/**
+ * The VN a song comes from, as the identity, the name to show for it, and where
+ * to look it up.
+ *
+ * Identity is the game's own `Sources[0].Id` — the same VN reached from two
+ * different songs carries the same id, which is what lets a caller group by it
+ * without trusting the title text. Exports that carry no id fall back to the
+ * normalized title, so grouping still works on a hand-made or trimmed export.
+ *
+ * `url` is the source's VNDB page, picked out of its `Links` by `Type` rather
+ * than by position or host — each source also carries a `SelfSource` link to the
+ * quiz's own page plus Wikidata/EGS/VGMdb entries, and only the VNDB one is a
+ * link *to the VN*. Null when this source has no VNDB link at all, so a caller
+ * renders plain text rather than a dead link.
+ *
+ * Returns null when the song names no VN at all (a non-VN track), rather than
+ * an entry with an empty title — callers skip those rather than listing a blank
+ * row under a real VN's counts.
+ */
+export function getVNSource(song: any): { id: string; title: string; url: string | null } | null {
+  const source = song?.Song?.Sources?.[0];
+  if (!source) return null;
+  const title = getVNName(song);
+  if (!title) return null;
+  // Namespaced so a title key can never collide with a numeric source id.
+  const raw = source.Id;
+  const id = raw === undefined || raw === null || raw === '' ? '' : String(raw);
+  const links: any[] = Array.isArray(source.Links) ? source.Links : [];
+  const vndb = links.find((l) => l?.Type === 'VNDB');
+  const url = typeof vndb?.Url === 'string' && vndb.Url !== '' ? vndb.Url : null;
+  return { id: id || `title:${norm(title)}`, title, url };
+}
+
 export function getVNName(song: any): string {
   const sources = song?.Song?.Sources ?? [];
   if (!sources.length) return '';

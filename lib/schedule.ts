@@ -245,6 +245,39 @@ export function exportDisplayLabel(label: string): string {
 }
 
 /**
+ * Fingerprints one export's raw JSON so two uploads can be compared for
+ * identity. Key order and whitespace are normalized away (object keys sorted,
+ * arrays left in order — the song history's order is the game's own), so an
+ * export re-uploaded later, or one that came back out of the database
+ * pretty-printed by the admin form, compares equal to the copy already
+ * attached. A plain text compare would not: the form seeds saved files with
+ * `JSON.stringify(data, null, 2)` while a fresh upload keeps the game's own
+ * formatting, so the very re-upload this exists to catch would look different
+ * on every upload path but the original.
+ *
+ * Used only for exact duplicates — one export is one game, so an identical
+ * file attached twice is always the same game counted twice. Genuinely
+ * different games differ in content (every song entry carries its own
+ * `PlayedAt`), so there is no collision to confuse it with.
+ */
+export function fileContentSignature(data: unknown): string {
+  return canonicalJson(data);
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    // `undefined` reaches here for an absent property; JSON has no such thing,
+    // so it's spelled the same way `JSON.stringify` would leave it out.
+    return JSON.stringify(value) ?? 'null';
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
+/**
  * Orders two exports by the time in their names, earliest first. This is the
  * order pass 2 of matchFilesToBracket tries them in, so when a pair has two
  * recorded games the earlier one lands on the pair's first fixture and the
