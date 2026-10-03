@@ -278,13 +278,20 @@ export default function GuessRateTable({
 
   // Trailing count columns, shared so their short labels and their tooltips
   // can't drift apart between the NGMC and Erumode tables.
-  const rigCountColumn = <T extends { rigCount: number }>(): Column<T> => ({
+  const rigCountColumn = <T extends { rigCount: number; songs: number }>(): Column<T> => ({
     key: 'rigCount',
     label: 'Rigs',
-    title: 'Rig Count — total guesses that were on their pre-made list',
+    title:
+      'Rig Count — total guesses that were on their pre-made list; the percentage is that count over the songs they played',
     className: 'border-r border-border',
     accessor: (r) => r.rigCount,
-    render: (r) => r.rigCount,
+    // The count with its share of the player's songs beside it — 26 (20.3%) —
+    // so the density reads without eyeing the Songs column next door. rigCount
+    // is per song (see computeGuessRateStats), so the ratio can't pass 100%;
+    // a player with no songs has no percentage to divide into, so the count
+    // stands alone there.
+    render: (r) =>
+      r.songs > 0 ? `${r.rigCount} (${pct((100 * r.rigCount) / r.songs)})` : `${r.rigCount}`,
   });
   const songsColumn = <T extends { songs: number }>(): Column<T> => ({
     key: 'songs',
