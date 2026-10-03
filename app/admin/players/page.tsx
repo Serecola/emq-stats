@@ -232,18 +232,6 @@ export default async function AdminPlayersPage({
             submode={submode}
             playerQuery={playerViewQuery(filter, range)}
           />
-          <p className="text-xs text-textDim">
-            Set Rank is manual and stored per gamemode + sub-mode — it is the rank
-            autodraft balances with for a {selection} tournament. Expected Rank is the
-            player&apos;s songs-weighted Performance across {rangePhrase}, and Expectation
-            compares the two (Expected Rank − Set Rank). Only {selection} games count
-            towards either — another sub-mode is a different game, so its results are
-            never used as a stand-in.
-            {mode === 'Erumode' && submode === 'Normal' && (
-              <> VN GR is the songs-weighted average VN Guess Rate over the same range, and
-                VN Expected Rank is Expected Rank computed from VN-only answers alone.</>
-            )}
-          </p>
         </>
       )}
     </div>

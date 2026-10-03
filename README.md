@@ -281,6 +281,25 @@ A trimmed row keeps its all-time count beside the ranged one ("5 / 12") instead
 of quietly dropping the rest, and nothing is written either way — the switch
 changes what a view reads, never what's stored.
 
+### The player page
+
+`/players/<name>` shows one player's stat cards and tournament history, and it
+reads them inside exactly one gamemode + sub-mode — the same slice
+`findPlayerStats` is given, so every figure on the page describes one game
+rather than a blend of several. The mode/sub-mode chips
+(`components/ModeToggle.tsx`, with `includeAll={false}` /
+`includeAllSubmodes={false}` like `/players`) switch that slice with concrete
+modes and sub-modes only; there is no "All" here because a catch-all would mix
+scales (Erumode's Performance is scored differently from NGMC's) and there is no
+single history to show. The chips carry the range along as well, so changing
+mode keeps the Recent / All-Time choice instead of dropping back to the default
+window.
+
+A player who simply never played the selected mode (the page's empty state) is
+not a 404: their unfiltered name still resolves, and the same chips stay on
+screen so the way forward is to pick a mode where they do have tournaments. Only
+a name that matches nobody at all 404s.
+
 ## Player Manager ranks
 
 `/admin/players` works inside one gamemode **and** sub-mode at a time (e.g.

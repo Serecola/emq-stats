@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { findPlayerStats, listPlayerTags } from '@/lib/store';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
+import ModeToggle from '@/components/ModeToggle';
 import StatsRangeToggle from '@/components/StatsRangeToggle';
 import { slicePlayerSummary, type PlayerMatchEntry } from '@/lib/player-stats';
 import {
@@ -13,6 +14,7 @@ import {
   parseStatsRange,
   playerViewQuery,
   RECENT_TOUR_COUNT,
+  statsRangeFragment,
   statsRangeLabel,
 } from '@/lib/stats-range';
 
@@ -60,6 +62,17 @@ export default async function PlayerPage({
           {overall.uname}
           <PlayerTagBadge uname={overall.uname} overrides={tags} className="ml-2" />
         </h1>
+        {/* The mode + sub-mode chips matter most here: the player exists, just
+            not in this slice, so the way out is to pick a mode where they do
+            have tournaments. Same concrete-only chips as the normal view below
+            (see the comment there). */}
+        <ModeToggle
+          active={filter}
+          basePath={`/players/${encodeURIComponent(overall.uname)}`}
+          includeAll={false}
+          includeAllSubmodes={false}
+          extraQuery={statsRangeFragment(range)}
+        />
         <p className="text-sm text-textMuted">
           No {filterLabel || 'matching'} tournaments played.{' '}
           <Link
@@ -111,6 +124,20 @@ export default async function PlayerPage({
           {statsRangeLabel(range, view.entries.length, totalTournaments)}
         </p>
       </div>
+
+      {/* The same mode + sub-mode chips as /players and the Player Manager:
+          concrete modes and sub-modes only (no "all"), because this page always
+          works inside exactly one mode + sub-mode — the very slice
+          findPlayerStats was given above. Switching keeps the Recent /
+          All-Time choice (the range rides in extraQuery), so changing mode
+          never silently drops back to the default window. */}
+      <ModeToggle
+        active={filter}
+        basePath={`/players/${encodeURIComponent(player.uname)}`}
+        includeAll={false}
+        includeAllSubmodes={false}
+        extraQuery={statsRangeFragment(range)}
+      />
 
       {/* Mode priority: Erumode's section is shown before NGMC's everywhere a
           mode is listed (see MODES in lib/types.ts). */}

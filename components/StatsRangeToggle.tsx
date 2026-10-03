@@ -12,8 +12,12 @@ const RANGES: { id: StatsRange; label: string; hint: string }[] = [
 
 /**
  * Switch between the two readings of a player's tournament history: their last
- * `RECENT_TOUR_COUNT` tournaments (the default) or all of them. It sits on the
- * player page only — the /players list has no per-player slice to show.
+ * `RECENT_TOUR_COUNT` tournaments (the default) or all of them. The same slider
+ * sits on every view that reads that history — `/players/<name>`, `/players`
+ * and the Player Manager's Set Ranks tab — so "Recent" means the same handful of
+ * tournaments wherever it is chosen. (The Player Tags tab has no switch: aliases
+ * and bot overrides are global per username rather than per tournament, so there
+ * is no history to slice.)
  *
  * Both sides are plain <Link>s carrying the whole URL, mode filter included, so
  * the active side is resolved server-side, the choice is bookmarkable and
