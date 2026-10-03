@@ -425,6 +425,14 @@ much of the list is left while a search is active. The search only ever hides
 rows: medals are still computed over every player, so a search can never move
 one.
 
+The table's **Columns** popup (the toolbar's right edge, beside the search)
+folds any column but the player's name out of the view: a checklist that is
+session state like the sort, and which parks the list on its default sort if
+the column it was sorting by disappears. The match page's Guess Rate table
+carries the same popup over its own toolbar. Hiding never spreads what's left:
+the table drops its full width and packs left at its natural column widths, so
+a column going off reads as *removed*, not as the survivors drifting apart.
+
 ### Player Tags tab
 
 Holds the two global, per-username facts that aren't a rank: who is a bot, and

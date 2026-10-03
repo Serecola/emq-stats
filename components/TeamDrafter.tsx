@@ -53,7 +53,7 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
   {
     id: 'vn',
     label: 'Expected (VN Only)',
-    hint: "Each player's VN-only Expected Rank from their last 5 tournaments (Mst answers only) — no Set Rank fallback",
+    hint: "Each player's VN-only Expected Rank from their last 5 tournaments (no set ranks)",
   },
 ];
 
@@ -319,7 +319,7 @@ export default function TeamDrafter({
         (vnExpectedRanks ? (
           <p className="mt-1 text-[0.65rem] text-accent">
             Using each player&apos;s VN-only Expected Rank from their last 5
-            {savedRanksLabel ? ` ${savedRanksLabel}` : ''} tournaments (Mst answers only) — no Set
+            {savedRanksLabel ? ` ${savedRanksLabel}` : ''} tournaments. No Set
             Rank fallback, so players without one are asked for a rank below.
           </p>
         ) : (
@@ -451,8 +451,7 @@ export default function TeamDrafter({
       {drafts.length > 0 && (
         <div className="mt-2 space-y-1.5">
           <p className="text-[0.65rem] uppercase tracking-wide text-textDim">
-            {drafts.length} balanced split{drafts.length !== 1 ? 's' : ''} — click one to fill the
-            Teams box above
+            {drafts.length} balanced split{drafts.length !== 1 ? 's' : ''}
           </p>
           {drafts.map((draft, i) => (
             <button

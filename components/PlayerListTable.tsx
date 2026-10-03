@@ -13,6 +13,7 @@ import {
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
+import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu';
 import type { PlayerTagOverrides } from '@/lib/player-tags';
 import type { ErumodeSplitStats, PlayerSummary } from '@/lib/player-stats';
 import type { PlayerRankRow } from '@/lib/player-ranks';
@@ -174,6 +175,11 @@ export default function PlayerListTable({
   // hidden. Component state like the sort, so typing narrows the list instantly
   // without a round-trip to the server-rendered page.
   const [query, setQuery] = useState('');
+  // Columns folded away with the toolbar's Columns popup — session view state,
+  // like the sort and the search. Player never appears in the popup (the one
+  // column that says whose numbers these are), and VN Exp is left to the VN
+  // cell fold, so the two controls can't fight over it.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
 
   // VN-only (Mst) figure over the same range the row's other stats use: the
   // rank-row value when the player has a ladder row, else the sliced aggregate
@@ -371,7 +377,7 @@ export default function PlayerListTable({
           // No heat here: the medal says more than a shade across five columns
           // that would otherwise all look alike.
           cellClassName: (r) => medalFor(t.type, r) + (isVnToggle ? ' cursor-pointer' : ''),
-          cellTitle: isVnToggle ? () => 'Click to show/hide VN Expected Rank (Mst answers only)' : undefined,
+          cellTitle: isVnToggle ? () => 'Click to show/hide VN Expected Rank' : undefined,
           cellOnClick: isVnToggle
             ? () => {
                 // Collapsing while VN Exp holds the sort parks the list back
@@ -485,6 +491,23 @@ export default function PlayerListTable({
     toggleSort(key, sortKey, sortDir, key === 'uname' ? 'asc' : 'desc', setSortKey, setSortDir);
   }
 
+  /** The popup's checkbox: fold one column in or out of the drawn set. */
+  function toggleCol(key: string) {
+    const hiding = !hiddenCols.has(key);
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    // Hiding the column the list is sorted by would leave the order with no
+    // visible arrow — park on Set Rank, exactly as the VN fold does.
+    if (hiding && sortKey === key) {
+      setSortKey('setRank');
+      setSortDir('desc');
+    }
+  }
+
   // What the search box keeps: a case-insensitive substring match on the
   // displayed username. Medals were computed from every player above, so this
   // only decides which rows reach the sort — narrowing the list can hide a row
@@ -502,6 +525,15 @@ export default function PlayerListTable({
           compareValues(activeColumn.accessor(a), activeColumn.accessor(b), sortDir)
         );
 
+  // What the table actually draws: every column minus the folded-away ones.
+  // The header map, the body map and the empty-state colSpan all walk this
+  // list, so they can't disagree; medals are computed from the rows rather
+  // than the columns, so hiding a rate never moves a medal off anyone.
+  const shown = columns.filter((c) => !hiddenCols.has(c.key));
+  const hideable = columns
+    .filter((c) => c.key !== 'uname' && c.key !== 'vnExpectedRank')
+    .map((c) => ({ key: c.key, label: c.label }));
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       {/* The search sits across the card's top right: a right-aligned toolbar
@@ -509,6 +541,12 @@ export default function PlayerListTable({
           appears while a search is active, so it reads as "how much of the
           list is left" rather than restating the total under the page header. */}
       <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-2 py-2">
+        <ColumnVisibilityMenu
+          items={hideable}
+          hidden={hiddenCols}
+          onToggle={toggleCol}
+          onShowAll={() => setHiddenCols(new Set())}
+        />
         {q && (
           <span className="text-xs text-textMuted">
             {sorted.length} of {players.length} player{players.length !== 1 ? 's' : ''}
@@ -531,15 +569,23 @@ export default function PlayerListTable({
           set fit a laptop screen, and a phone below that. The type steps down
           under `sm` on top of that (a smaller grid needs less width), and the
           wrapper keeps its own `overflow-x-auto` as the fallback for the point
-          the numbers themselves can't compress any further. */}
-      <table className="w-full border-collapse text-[0.7rem] sm:text-xs">
+          the numbers themselves can't compress any further.
+          The width goes with the columns: with every column shown the table
+          fills the card, but `w-full` would hand the width of each folded-away
+          column to the survivors and drift them apart. So once anything is
+          hidden the table drops to its content width and packs left in the
+          card — turning a column off then reads as taking it out, rather than
+          as spreading what is left. */}
+      <table
+        className={`border-collapse text-[0.7rem] sm:text-xs ${hiddenCols.size ? 'w-auto' : 'w-full'}`}
+      >
         <thead>
           <tr className="border-b border-border bg-surfaceAlt text-left text-[0.6rem] uppercase tracking-wide text-textMuted sm:text-[0.65rem]">
             {/* Every header sorts, VN in Erumode Normal included — its
                 Expected Rank folds from the column's cells instead (see
                 cellOnClick on the split block), with the hint carried by the
                 header's hover title and the cells' pointer cursor. */}
-            {columns.map((c) => (
+            {shown.map((c) => (
               <SortableHeader
                 key={c.key}
                 label={c.label}
@@ -560,7 +606,7 @@ export default function PlayerListTable({
           {sorted.length === 0 && (
             <tr>
               <td
-                colSpan={columns.length}
+                colSpan={shown.length}
                 className="px-3 py-8 text-center text-sm text-textMuted"
               >
                 No players match &ldquo;{query.trim()}&rdquo;.
@@ -572,7 +618,7 @@ export default function PlayerListTable({
               key={r.player.uname}
               className={TABLE_ROW_CLASS}
             >
-              {columns.map((c) => (
+              {shown.map((c) => (
                 <td
                   key={c.key}
                   style={c.cellStyle?.(r)}

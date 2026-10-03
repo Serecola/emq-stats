@@ -6,6 +6,7 @@ import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
 import { teamColor } from '@/lib/team-colors';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
+import ColumnVisibilityMenu from './ColumnVisibilityMenu';
 import ExpectationBadge from './ExpectationBadge';
 import PlayerTagBadge from './PlayerTagBadge';
 import { SortableHeader, toggleSort, compareValues, DENSE_CELL_PAD, STATS_BODY_TEXT, STATS_HEADER_TEXT, type SortDir } from './SortableTable';
@@ -84,9 +85,31 @@ function GenericSortableTable<T extends { uname: string }>({
   const [sortKey, setSortKey] = useState<string | null>(defaultSortKey ?? null);
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir);
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
+  // Columns folded away with the toolbar's Columns popup — session view state
+  // like the sort. The player name column is never offered: without it the
+  // rows lose the one cell that says whose numbers these are.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
 
   function onSort(key: string) {
     toggleSort(key, sortKey, sortDir, key === 'uname' ? 'asc' : 'desc', setSortKey, setSortDir);
+  }
+
+  /** The popup's checkbox: fold one column in or out of the drawn set. */
+  function toggleCol(key: string) {
+    const hiding = !hiddenCols.has(key);
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    // Hiding the sorted column would leave the order with no visible arrow —
+    // park back on the table's own default sort, the same reset the players
+    // list performs when its sorted column disappears.
+    if (hiding && sortKey === key) {
+      setSortKey(defaultSortKey ?? null);
+      setSortDir(defaultSortDir);
+    }
   }
 
   const activeColumn = columns.find((c) => c.key === sortKey);
@@ -94,19 +117,46 @@ function GenericSortableTable<T extends { uname: string }>({
     ? [...rows].sort((a, b) => compareValues(activeColumn.accessor(a), activeColumn.accessor(b), sortDir))
     : rows;
 
+  // What the table draws: every column minus the folded-away ones. The header
+  // map, the body map and the empty-state colSpan all walk this list, so they
+  // can't disagree about how wide the grid is.
+  const shown = columns.filter((c) => !hiddenCols.has(c.key));
+  const hideable = columns
+    .filter((c) => c.key !== 'uname')
+    .map((c) => ({ key: c.key, label: c.label }));
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+      {/* The Columns popup sits over the table's top right, the same corner
+          the players list gives its search — the panel itself is
+          fixed-positioned (see ColumnVisibilityMenu) so this card's own
+          horizontal scroll can't clip it. */}
+      <div className="flex items-center justify-end border-b border-border px-2 py-2">
+        <ColumnVisibilityMenu
+          items={hideable}
+          hidden={hiddenCols}
+          onToggle={toggleCol}
+          onShowAll={() => setHiddenCols(new Set())}
+        />
+      </div>
       {/* Dense type: the body sits just under the app's text-sm and the header
           just under that, so ~20 narrow stat columns stay legible without the
           rows growing taller — see STATS_BODY_TEXT / STATS_HEADER_TEXT. Those
           sizes and DENSE_CELL_PAD all tighten under `sm`, and the table carries
           no fixed min-width, so a narrower screen scales the grid down instead
           of forcing a horizontal scrollbar; the wrapper's `overflow-x-auto` is
-          the fallback past the point the columns can't compress any further. */}
-      <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
+          the fallback past the point the columns can't compress any further.
+          The width goes with the columns, as on the players list: with every
+          column shown the table fills the card, but `w-full` would hand the
+          width of each folded-away column to the survivors and drift them
+          apart — so once anything is hidden it drops to its content width and
+          packs left instead. */}
+      <table
+        className={`border-collapse ${hiddenCols.size ? 'w-auto' : 'w-full'} ${STATS_BODY_TEXT}`}
+      >
         <thead>
           <tr className={`border-b border-border bg-surfaceAlt text-left uppercase tracking-wide text-textMuted ${STATS_HEADER_TEXT}`}>
-            {columns.map((c) => (
+            {shown.map((c) => (
               <SortableHeader
                 key={c.key}
                 label={c.label}
@@ -143,7 +193,7 @@ function GenericSortableTable<T extends { uname: string }>({
                 style={bg ? ({ '--row-tint': bg } as CSSProperties) : undefined}
                 className={`${TABLE_ROW_CLASS}${bg ? ' bg-[var(--row-tint)]' : ''}`}
               >
-                {columns.map((c) => (
+                {shown.map((c) => (
                   <td
                     key={c.key}
                     className={`${DENSE_CELL_PAD} ${c.key === 'uname' ? 'font-medium' : 'text-right text-textMuted tabular-nums'} ${
@@ -160,7 +210,7 @@ function GenericSortableTable<T extends { uname: string }>({
           })}
           {sortedRows.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center text-sm text-textMuted">
+              <td colSpan={shown.length} className="px-3 py-8 text-center text-sm text-textMuted">
                 No data.
               </td>
             </tr>
