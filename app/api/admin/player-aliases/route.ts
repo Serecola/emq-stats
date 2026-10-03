@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setPlayerAlias } from '@/lib/store';
+import { hasAdminSession } from '@/lib/admin-session';
 import { norm } from '@/lib/stats';
 
 /**
@@ -14,9 +15,14 @@ import { norm } from '@/lib/stats';
  * splitting the names again, so the UI only offers a plain delete.
  *
  * PUT (not POST) because it's idempotent per alias — same shape as
- * PUT /api/admin/player-tags. `/api/admin/*` is already gated by middleware.
+ * PUT /api/admin/player-tags. Admin-gated in the handler below — see
+ * lib/admin-session.ts for why that is not middleware's job.
  */
 export async function PUT(req: NextRequest) {
+  // The admin gate (see lib/admin-session.ts — the Edge middleware cannot read
+  // the secret, so a middleware check would deny everyone).
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = (await req.json().catch(() => null)) as
     | { alias?: unknown; target?: unknown }
     | null;

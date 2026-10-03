@@ -15,6 +15,7 @@ import {
   listSetRanks,
 } from '@/lib/store';
 import { savedRanksFor } from '@/lib/player-ranks';
+import { requireAdminPage } from '@/lib/admin-session';
 import {
   ALL_MATCH_FILTER,
   applyMatchFilter,
@@ -57,6 +58,10 @@ export default async function AdminPlayersPage({
 }: {
   searchParams: { mode?: string; submode?: string; tab?: string; range?: string };
 }) {
+  // Admin gate (see lib/admin-session.ts — the Edge middleware cannot read the
+  // secret, so the check that matters lives here in the Node runtime).
+  await requireAdminPage('/admin/players');
+
   // Ranks are per gamemode *and* sub-mode (that's what a draft is balanced
   // at), so this view always works inside exactly one sub-mode — there is no
   // mode-level or "all sub-modes" rank. An unfiltered visit lands on the
@@ -122,35 +127,6 @@ export default async function AdminPlayersPage({
           tags={tags}
           aliases={aliases}
         />
-        <p className="text-xs text-textDim">
-          <span className="font-medium text-textMuted">Aliases</span> merge two names for the same
-          person everywhere: aggregated stats, player pages, Expected Ranks and the autodrafter all
-          follow the alias, and the alias&apos;s Set Ranks move onto the player you add it to. Use one
-          when someone turns up under a second username in a different tournament — a match&apos;s own
-          renames only ever fix that single match. Removing an alias splits the names back apart;
-          anything already moved to the canonical player stays there. The{' '}
-          <span className="font-medium text-textMuted">✎</span> next to a username renames a
-          player — the current name is kept as an alias of the new one, so tournaments that recorded
-          the old name still count towards them, and a change of capitalisation counts too. The{' '}
-          <span className="font-medium text-textMuted">⇄</span> on an alias swaps the two: it
-          becomes the main name and the current one its alias.
-        </p>
-        <p className="text-xs text-textDim">
-          Any username containing{' '}
-          <span className="font-medium text-textMuted">Bot</span> is badged as a bot automatically,
-          so ordinary players never need tagging. Click{' '}
-          <span className="font-medium text-textMuted">Bot</span> on one of those to mark it as a
-          real player when the name is a false alarm (RobotFan, Botanist) — it gets a{' '}
-          <span className="font-medium text-textMuted">not a bot</span> override instead, and the{' '}
-          <span className="font-medium text-textMuted">auto</span> button puts any override back
-          under the name rule. Bots get a{' '}
-          <span className="rounded-full border border-border bg-surfaceAlt px-1.5 py-0.5 text-[0.65rem] text-textMuted">
-            bot
-          </span>{' '}
-          pill next to them on public player pages and stats tables. Both aliases and overrides are
-          global — one per normalized username across every gamemode, stored under the same
-          identity as Set Ranks.
-        </p>
       </div>
     );
   }

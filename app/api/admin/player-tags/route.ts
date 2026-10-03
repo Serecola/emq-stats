@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setPlayerTag } from '@/lib/store';
+import { hasAdminSession } from '@/lib/admin-session';
 import type { PlayerTag } from '@/lib/types';
 
 /**
@@ -14,12 +15,16 @@ import type { PlayerTag } from '@/lib/types';
  * `null` to drop the override and fall back to the name again.
  *
  * PUT (not POST) because this is idempotent per username: the tab saves a
- * single cell, and re-sending the same value is a no-op. `/api/admin/*` is
- * already gated by middleware.ts.
+ * single cell, and re-sending the same value is a no-op. Admin-gated in the
+ * handler below — see lib/admin-session.ts for why that is not middleware's job.
  */
 const VALID_TAGS: readonly PlayerTag[] = ['Bot', 'NotBot'];
 
 export async function PUT(req: NextRequest) {
+  // The admin gate (see lib/admin-session.ts — the Edge middleware cannot read
+  // the secret, so a middleware check would deny everyone).
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = (await req.json().catch(() => null)) as
     | { playerKey?: unknown; tag?: unknown }
     | null;

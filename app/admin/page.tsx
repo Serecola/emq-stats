@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { listMatchSummaries } from '@/lib/store';
+import { requireAdminPage } from '@/lib/admin-session';
 import ModeToggle from '@/components/ModeToggle';
 import DeleteMatchButton from '@/components/DeleteMatchButton';
 import ExcludeStatsToggle from '@/components/ExcludeStatsToggle';
@@ -18,6 +19,10 @@ export default async function AdminPage({
 }: {
   searchParams: { mode?: string; submode?: string };
 }) {
+  // Admin gate (see lib/admin-session.ts — the Edge middleware cannot read the
+  // secret, so the check that matters lives here in the Node runtime).
+  await requireAdminPage('/admin');
+
   const filter = parseMatchFilter(searchParams);
 
   const allMatches = await listMatchSummaries();

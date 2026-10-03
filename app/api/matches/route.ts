@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createMatch, listMatchSummaries } from '@/lib/store';
+import { hasAdminSession } from '@/lib/admin-session';
 import { isValidDate } from '@/lib/match-title';
 import { isValidTeamCount } from '@/lib/schedule';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
@@ -13,6 +14,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Reads are public (the viewer list above); creating a tournament is not —
+  // admin-gated here, see lib/admin-session.ts.
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = (await req.json()) as MatchInput;
 
   if (!body?.name?.trim()) {

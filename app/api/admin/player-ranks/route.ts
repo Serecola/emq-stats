@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setPlayerSetRank } from '@/lib/store';
+import { hasAdminSession } from '@/lib/admin-session';
 import { MODES, SUBMODES_BY_MODE, type Mode } from '@/lib/types';
 
 /**
@@ -9,9 +10,14 @@ import { MODES, SUBMODES_BY_MODE, type Mode } from '@/lib/types';
  *
  * PUT (not POST) because this is idempotent per player+mode+sub-mode: the
  * Player Manager saves a single cell, and re-sending the same value is a
- * no-op. `/api/admin/*` is already gated by middleware.ts.
+ * no-op. Admin-gated in the handler below — see lib/admin-session.ts for why
+ * that is not middleware's job.
  */
 export async function PUT(req: NextRequest) {
+  // The admin gate (see lib/admin-session.ts — the Edge middleware cannot read
+  // the secret, so a middleware check would deny everyone).
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = (await req.json().catch(() => null)) as
     | { playerKey?: unknown; mode?: unknown; submode?: unknown; rank?: unknown }
     | null;

@@ -57,8 +57,9 @@ export default async function MatchPage({
 
   // An admin viewing the public page gets a shortcut back into this
   // tournament's editor; a normal visitor isn't shown the control at all (the
-  // session cookie is httpOnly, so only the server can answer this).
-  const isAdmin = hasAdminSession();
+  // session cookie is httpOnly, so only the server can answer this — and
+  // answering it means hashing the secret, hence the await).
+  const isAdmin = await hasAdminSession();
 
   // Global Player/Bot tags for the bot pills in the stats tables below.
   const playerTags = await listPlayerTags();

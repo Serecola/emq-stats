@@ -77,8 +77,9 @@ hand, so those need `withBasePath()` from `lib/base-path.ts`:
 - `fetch()` calls in client components (login, logout, the Player Manager
   writes, the match form's save, match delete)
 - a native `<form action>` — a no-JS submit is a plain browser navigation
-- the login redirect in `middleware.ts` (built from `req.nextUrl.clone()`, which
-  re-adds the prefix on serialize)
+- nothing: the admin login bounce is a `redirect()` from `requireAdminPage`
+  (lib/admin-session.ts), which — like `<Link>` and the router — applies the
+  basePath itself, so it takes the unprefixed `/admin/login`
 
 `next.config.mjs` exports the value as `NEXT_PUBLIC_BASE_PATH` so
 `lib/base-path.ts` reads it rather than repeating the string.
@@ -123,8 +124,8 @@ Implementation lives in three places:
 2. Set the environment variables from `.env.example`
    (`ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `TURSO_DATABASE_URL`,
    `TURSO_AUTH_TOKEN`).
-3. Deploy. `/admin` is gated by `middleware.ts` using the session cookie set
-   at `/admin/login`.
+3. Deploy. `/admin` is gated per page and per route handler by the session
+   cookie set at `/admin/login` (see [Admin authentication](#admin-authentication)).
 
 ## Serving behind nginx
 
@@ -170,28 +171,90 @@ proxy's limits apply on top of the app's:
   *visitor* used, because Next builds every absolute URL out of the headers it
   receives: the protocol from `X-Forwarded-Proto` when set (otherwise the
   socket), the host from `X-Forwarded-Host`, else `Host` — `base-server.js`'s
-  `req.headers["x-forwarded-host"] ??= req.headers["host"]`, which is why an
-  upstream `X-Forwarded-Proto` is honoured while a missing `X-Forwarded-Host`
-  silently falls back to whatever `Host` the proxy sent. nginx's default is *its
-  own* upstream address (the host in `proxy_pass`), so with the headers missing
-  the app believes it is serving `localhost:3000`, and hitting `/admin` bounces
-  the visitor to `https://localhost:3000/emq-stats/admin/login?from=%2Fadmin` —
-  off the domain, with the `https` that the proxy's `X-Forwarded-Proto` supplied
-  next to the `localhost` that `Host` supplied. That redirect is
-  `middleware.ts`'s admin gate, and it is the only absolute URL the app hands a
-  browser of its own accord; everything else (asset paths, `<Link>`, the
-  login form's `fetch`, the post-login `router.push`) is path-relative or
-  basePath-prefixed precisely so a proxy can't misplace it. The host Next saw is
-  what the URL names — `localhost:3000` means the config forwards a
-  `proxy_pass http://localhost:3000;` address rather than a `Host` header.
+  `req.headers["x-forwarded-host"] ??= req.headers["host"]`. Set them anyway:
+  nginx's default is *its own* upstream address (the host in `proxy_pass`), so
+  with the headers missing the app believes it is serving `localhost:3000` and
+  any absolute URL it builds would point off the domain. The admin path builds
+  none — the login bounce is a `redirect()` to a basePath-prefixed *path*, which
+  the browser resolves against whatever domain it used — but the headers are one
+  line each, and every future absolute URL depends on them.
 
   Verify from outside with `curl -sSI https://<domain>/emq-stats/admin`: the
-  `Location` should be `/emq-stats/admin/login?from=%2Fadmin` (a path the
-  browser resolves against the domain, as in this repo's Next 14.2.35), or at
-  worst an absolute URL naming that same domain — never `localhost`. The live
-  host config (this location, the HTTP → HTTPS redirect, the certbot SSL lines)
-  lives on the server, not in this repo — the snippet above is what it must
-  contain.
+  `Location` should be `/emq-stats/admin/login?from=%2Fadmin` — a path, never a
+  URL naming some other host. The live host config (this location, the HTTP →
+  HTTPS redirect, the certbot SSL lines) lives on the server, not in this repo —
+  the snippet above is what it must contain.
+
+## Admin authentication
+
+One shared password, one session secret, no user accounts.
+`ADMIN_PASSWORD` is the only credential ever compared at the login door; it
+lives in the server's env and nowhere else.
+
+`ADMIN_SESSION_SECRET` is **required**, and the session cookie's value is
+**not** the secret itself — it is `SHA-256(secret + ':' + window)`, where
+*window* is the current 90-day period (`sessionWindow` in `lib/auth.ts`). Three
+things follow:
+
+- **Sessions expire on their own every 90 days.** The admin signs back in with
+  the same password — the cheapest re-auth there is for a single admin, and it
+  needs no cron job, no stored counter and no restart, because the window is
+  derived from the clock on the writer (the login route) and on the checker
+  (`hasAdminSession`) alike, so they cannot disagree about which generation a
+  request is in.
+- **A captured cookie can't be extended.** The cookie carries the hash, not the
+  secret, so whoever holds one cannot mint a cookie for a later window — which
+  is what would otherwise make the automatic rotation cosmetic. It stays valid
+  at most until its own window ends.
+- **To expire everything immediately** (a suspected leak): change
+  `ADMIN_SESSION_SECRET` and restart the server process. Nothing else — the gate
+  reads the env per request in the same runtime that mints the cookie, so there
+  is no second, build-time copy to rebuild and no window to reason about.
+
+The cookie's own `maxAge` is 30 days, so in practice a session ends there
+first; the 90-day window is the server-side ceiling that still holds if that TTL
+is ever raised, or if a cookie is restored from a browser backup.
+
+The gate lives in the Node runtime, in each admin page (`requireAdminPage`) and
+each admin route handler (`hasAdminSession`, answering 401) — not in
+`middleware.ts`, which used to do it. The Edge middleware compiles `process.env`
+to a runtime lookup that resolves to nothing in its sandbox, so a check there
+compared the cookie against `undefined` and bounced *every* admin request,
+cookie or not; the Node runtime reads the same env correctly (the login route
+mints valid cookies from it). One runtime, one comparison, and no build-time
+coupling to trip over when the secret changes.
+
+There is deliberately **no `ADMIN_PASSWORD` fallback**: a deployment missing
+`ADMIN_SESSION_SECRET` denies the admin area outright — every admin page bounces
+to the login screen and the login route answers 500 — rather than quietly
+treating the password as the cookie, which would make a guessed, reused or
+leaked password a valid session too.
+
+`POST /api/admin/login` is throttled per client address: **5 wrong passwords
+within 10 minutes** and that address gets `429` with a `Retry-After` until the
+window rolls over; a successful login clears the tally. The counter is
+in-process (a `Map` in the route), which matches the single `next start` behind
+nginx — a restart clears it, and behind several instances each process keeps
+its own tally. nginx can rate-limit the path itself for defence in depth, which
+also covers a restart or extra instance:
+
+```nginx
+# in the http block
+limit_req_zone $binary_remote_addr zone=emq_login:10m rate=10r/m;
+
+server {
+  location /emq-stats/api/admin/login {
+    limit_req zone=emq_login burst=5 nodelay;
+    proxy_pass http://127.0.0.1:3000;
+    # ...plus the same proxy_set_header lines as the app location above
+  }
+}
+```
+
+The address the app throttles on is the **last** `X-Forwarded-For` entry:
+nginx's `$proxy_add_x_forwarded_for` appends the real peer to whatever the
+client sent, so the first entry is attacker-controlled and must not be
+trusted.
 
 ## Backing up and exporting the data
 
@@ -233,7 +296,7 @@ what the app showed and what the stats were computed from.
 `GET /api/admin/export?id=<match id>` exports one tournament and
 `?format=json` skips the archive, returning the same content as a single JSON
 document for scripting. The whole route sits behind the admin session cookie
-(`middleware.ts` matches `/api/admin/:path*`) and answers `Cache-Control:
+(the handler asks `hasAdminSession` and answers 401) and answers `Cache-Control:
 private, no-store`, so nothing between the proxy and the browser holds on to an
 archive of every upload. Worth running before a risky edit or a database
 migration. The archive is assembled by `lib/zip.ts` — a hand-rolled deflate ZIP

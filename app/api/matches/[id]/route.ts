@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteMatch, getMatch, setMatchExcluded, updateMatch } from '@/lib/store';
+import { hasAdminSession } from '@/lib/admin-session';
 import { isValidDate } from '@/lib/match-title';
 import { isValidTeamCount } from '@/lib/schedule';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
@@ -12,6 +13,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  // GET above is the public match page's data; every mutating verb here is
+  // admin-gated in this file, see lib/admin-session.ts for why not middleware.
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = (await req.json()) as MatchInput;
 
   if (!body?.name?.trim()) {
@@ -59,11 +64,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   await deleteMatch(params.id);
   return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   // Row-level stats opt-out toggle from the Tour Manager (see
   // components/ExcludeStatsToggle.tsx). Touches only the flag — never the
   // roster, uploads or scores — so it can't clobber an editor save.

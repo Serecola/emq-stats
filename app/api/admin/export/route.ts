@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildExport, exportFilename, slug } from '@/lib/export';
+import { hasAdminSession } from '@/lib/admin-session';
 import { getMatch, listMatches } from '@/lib/store';
 import { createZip } from '@/lib/zip';
 import type { Match } from '@/lib/types';
@@ -13,6 +14,11 @@ export const runtime = 'nodejs';
 const JSON_INDENT = 2;
 
 export async function GET(req: NextRequest) {
+  // The admin gate (see lib/admin-session.ts — the Edge middleware cannot read
+  // the secret, so a middleware check would deny everyone). Exports carry the
+  // raw game JSON of every tournament, so this is admin-only by construction.
+  if (!(await hasAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   const format = searchParams.get('format');
