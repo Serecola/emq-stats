@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { findPlayerStats, findPlayerSynergy, listPlayerTags } from '@/lib/store';
+import { findPlayerStats, findPlayerMisses, findPlayerSynergy, listPlayerTags } from '@/lib/store';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import ModeToggle from '@/components/ModeToggle';
 import StatsRangeToggle from '@/components/StatsRangeToggle';
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerSynergySection from '@/components/PlayerSynergySection';
+import PlayerMissesSection from '@/components/PlayerMissesSection';
 import type { PlayerSynergyStats } from '@/lib/player-synergy';
+import type { PlayerMissStats } from '@/lib/player-misses';
 import {
   entryExpectation,
   entryOfflistGr,
@@ -143,6 +145,23 @@ export default async function PlayerPage({
     synergyError = err;
   }
 
+  // What they keep missing: the VNs they can't name (Mst answers) and the
+  // artists they can't place (A answers) — over exactly the same tournaments
+  // in view, so it narrows with the Recent / All-Time switch and the mode chips
+  // too. Computed in this body for the same reason as the synergy read above:
+  // only errors raised here are catchable by this function's try/catch.
+  let misses: PlayerMissStats | null = null;
+  let missesError: unknown = null;
+  try {
+    misses = await findPlayerMisses(
+      player.uname,
+      filter,
+      view.entries.map((e) => e.matchId)
+    );
+  } catch (err) {
+    missesError = err;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -251,6 +270,25 @@ export default async function PlayerPage({
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
           <PlayerSynergySection stats={synergy} filter={filter} playerTags={tags} />
+        </section>
+      ) : null}
+
+      {/* What this player keeps missing: the VNs their Mst answers can't land
+          and the artists their A answers can't. A section of its own for the
+          same reason the synergy block above has one: it is a ranking over
+          content rather than another figure for the stat cards, and it is the
+          only part of the page that names VNs. Gated on hasData too, so a slice
+          in which nothing was missed shows no heading rather than a heading
+          over an empty table. */}
+      {missesError ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Most Missed</h2>
+          <ErrorBox label="Most missed" err={missesError} />
+        </section>
+      ) : misses?.hasData ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Most Missed</h2>
+          <PlayerMissesSection stats={misses} />
         </section>
       ) : null}
     </div>

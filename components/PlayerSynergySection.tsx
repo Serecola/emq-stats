@@ -16,6 +16,7 @@ import {
 } from './SortableTable';
 import ReadValue from './SynergyReadValue';
 import PlayerTagBadge from './PlayerTagBadge';
+import { resolvePlayerTag } from '@/lib/player-tags';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
 type SortKey = 'uname' | 'read' | 'readBy';
@@ -35,45 +36,73 @@ const KEY_OF: Record<SortKey, (p: PartnerSynergy) => number | string> = {
 const PAGE_SIZE = 10;
 
 /**
+ * Partners with fewer chances than this are noise on a rate: 1/1 reads as a
+ * perfect 100% and would otherwise outrank a genuine 60% over 300 chances.
+ *
+ * Measured on `read.chances` — the songs on *their* list this player had the
+ * chance to land — which is the evidence behind the column the table ranks by
+ * default, so the floor and the ranking are always talking about the same
+ * number. The counts sit in every row, so a reader who wants the thin pairings
+ * back just turns the filter off.
+ */
+const MIN_CHANCES = 30;
+
+/**
  * A partner's name, linked through to their own player page and carrying the
  * bot pill. The link carries the current mode + sub-mode filter, so the two
  * pages describe the same slice of each player rather than silently comparing a
  * filtered ranking against an unfiltered one.
- *
- * The bar under the name is the read rate (this player landing theirs) as a
- * share of the strongest read in the table, so the eye picks out the pairings
- * that stand out before reading a single number. It is drawn in the muted text
- * token rather than an accent colour, matching the neutral scale of the match
- * page's tables, and reserves a sliver even for the smallest non-zero bar so a
- * real-but-tiny rate doesn't render as nothing.
  */
 function PartnerName({
   partner,
-  top,
   filter,
   playerTags,
 }: {
   partner: PartnerSynergy;
-  top: number;
   filter: MatchFilter;
   playerTags?: Record<string, PlayerTag>;
 }) {
-  const width = top > 0 ? Math.max(3, Math.round((partner.read.rate / top) * 100)) : 0;
   return (
-    <div className="min-w-0">
-      <Link
-        href={`/players/${encodeURIComponent(partner.uname)}${matchFilterQuery(filter)}`}
-        className="font-medium hover:underline"
-      >
-        {partner.uname}
-        <PlayerTagBadge uname={partner.uname} overrides={playerTags} className="ml-1.5" />
-      </Link>
-      {partner.read.chances > 0 && width > 0 && (
-        <div className="mt-1 h-[3px] w-full max-w-[9rem] overflow-hidden rounded-full bg-surfaceAlt">
-          <div className="h-full rounded-full bg-textSub" style={{ width: `${width}%` }} />
-        </div>
-      )}
-    </div>
+    <Link
+      href={`/players/${encodeURIComponent(partner.uname)}${matchFilterQuery(filter)}`}
+      className="min-w-0 font-medium hover:underline"
+    >
+      {partner.uname}
+      <PlayerTagBadge uname={partner.uname} overrides={playerTags} className="ml-1.5" />
+    </Link>
+  );
+}
+
+/**
+ * An on/off filter chip. `aria-pressed` carries the state so the toggle is
+ * announced correctly, and the active state is filled rather than just bordered
+ * — a filter you can't tell is on will silently cost you the rows it removed.
+ */
+function FilterToggle({
+  on,
+  onClick,
+  title,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={title}
+      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+        on
+          ? 'border-accent bg-accent text-bg'
+          : 'border-border text-textMuted hover:border-textSub hover:text-text'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -100,6 +129,11 @@ function PartnerTable({
   const [sortKey, setSortKey] = useState<SortKey>('read');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
+  // Both default to on: a ranking whose top row is a bot, or a 100% off two
+  // songs, is not a ranking. They're one click apart from showing everything,
+  // which is the escape hatch for anyone who wants the raw list.
+  const [hideBots, setHideBots] = useState(true);
+  const [hideThin, setHideThin] = useState(true);
   const accessor = KEY_OF[sortKey];
 
   function onSort(key: string) {
@@ -130,24 +164,72 @@ function PartnerTable({
     />
   );
 
-  const sorted = [...stats.partners].sort((a, b) =>
+  // Filtered before sorting, so the ranking, the ranks and the pager all count
+  // the same rows — and so a row that survives can't be pushed onto a later
+  // page by a partner hidden underneath it.
+  //
+  // Bot status goes through `resolvePlayerTag`, the one rule every view uses, so
+  // this table can't disagree with the pill it would otherwise be hiding or the
+  // Player Manager about who counts as a bot.
+  const shown = stats.partners.filter((p) => {
+    if (hideBots && resolvePlayerTag(p.uname, playerTags) === 'Bot') return false;
+    if (hideThin && p.read.chances < MIN_CHANCES) return false;
+    return true;
+  });
+
+  const sorted = [...shown].sort((a, b) =>
     compareValues(accessor(a), accessor(b), sortDir)
   );
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   // Clamped rather than trusted: a shorter list (a narrower range, a mode
-  // switch) can leave `page` past the end, and rendering nothing at all would
-  // read as "no partners" instead of "you were on the last page".
+  // switch, a filter flipped on) can leave `page` past the end, and rendering
+  // nothing at all would read as "no partners" instead of "you were on the last
+  // page".
   const current = Math.min(page, pageCount);
   const visible = sorted.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
-  // Shared by every bar in the table, so the strongest read fills its track and
-  // the rest are read against it — a bar scaled to its own row would make 2/2
-  // and 90/180 look identical. Taken over the whole list rather than the visible
-  // page, so paging doesn't rescale the bars under the reader.
-  const top = sorted.reduce((max, p) => Math.max(max, p.read.rate), 0);
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+      {/* Filters sit above the table rather than in it: they change which rows
+          exist, not how a row is displayed, and a header control that removes
+          rows would re-order under the reader's cursor. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <FilterToggle
+          on={hideBots}
+          onClick={() => {
+            setHideBots((v) => !v);
+            setPage(1);
+          }}
+          title="Hide partners tagged as a bot — accounts that guess by lookup rather than by reading each other"
+        >
+          Hide bots
+        </FilterToggle>
+        <FilterToggle
+          on={hideThin}
+          onClick={() => {
+            setHideThin((v) => !v);
+            setPage(1);
+          }}
+          title={`Hide partners with fewer than ${MIN_CHANCES} chances to land — too little evidence for the rate to mean anything`}
+        >
+          Min {MIN_CHANCES} songs
+        </FilterToggle>
+        {/* A filter that quietly removes rows reads as a smaller list rather
+            than a filtered one, so the row count is stated next to the chips
+            and only when the filters are actually costing something. */}
+        {shown.length < stats.partners.length && (
+          <span className="text-xs text-textDim">
+            {shown.length} of {stats.partners.length} partners shown
+          </span>
+        )}
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="rounded-lg border border-border bg-surface px-3 py-6 text-center text-sm text-textMuted">
+          No partners match these filters.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <table className={`w-full border-collapse ${STATS_BODY_TEXT}`}>
           <thead>
             <tr
@@ -158,12 +240,12 @@ function PartnerTable({
               {header(
                 'You snipe them',
                 'read',
-                'Songs this player correctly guessed that were on their list'
+                'Songs you got right that were on their list'
               )}
               {header(
                 'They snipe you',
                 'readBy',
-                'Songs this player got right that were on your list'
+                'Songs they got right that were on your list'
               )}
             </tr>
           </thead>
@@ -177,7 +259,7 @@ function PartnerTable({
                   {(current - 1) * PAGE_SIZE + i + 1}
                 </td>
                 <td className={DENSE_CELL_PAD}>
-                  <PartnerName partner={p} top={top} filter={filter} playerTags={playerTags} />
+                  <PartnerName partner={p} filter={filter} playerTags={playerTags} />
                 </td>
                 <td className={`${DENSE_CELL_PAD} text-right`}>
                   <ReadValue read={p.read} color />
@@ -189,7 +271,9 @@ function PartnerTable({
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      )}
+
       <Pager
         shown={visible.length}
         total={sorted.length}

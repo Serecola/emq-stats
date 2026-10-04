@@ -432,26 +432,40 @@ two views cannot drift on what a song counted:
 - a **hit** is a chance the reader also got right;
 - every rate is `hits / chances`, printed beside its own counts.
 
-Each pairing carries both directions on one row — **You read them** (songs this
-player got right that were on their list) and **They read you** (the same
+Each pairing carries both directions on one row — **You snipe them** (songs this
+player got right that were on their list) and **They snipe you** (the same
 relationship counted from the other end) — rather than two independently sorted
 lists, so a lopsided pairing is visible at a glance instead of having to be
-spotted by comparing positions across tables. The bar under each name is the
-read rate as a share of the strongest read in the table, so a bar scaled to its
-own row can't make 2/2 and 90/180 look identical. Columns are sortable by
-either direction or by name, and rates are coloured by `readHeat`
+spotted by comparing positions across tables. Columns are sortable by either
+direction or by name, and rates are coloured by `readHeat`
 (`components/SynergyReadValue.tsx`) — 50%+ green, 25–50% gold, under 25% red, so
 the column can be ranked without reading the numbers off it.
+
+Two filters sit above the table, both on by default, because a ranking whose top
+row is a bot or a 100% off two songs is not a ranking:
+
+- **Hide bots** — drops partners tagged `Bot`, resolved through
+  `resolvePlayerTag` (`lib/player-tags.ts`), the one rule every view uses, so
+  this table can't disagree with the pill it would otherwise be hiding.
+- **Min 30 songs** — drops partners with fewer than `MIN_CHANCES` (30) chances
+  on *their* list, measured on `read.chances`, the evidence behind the column the
+  table ranks by default. 1/1 would otherwise read as a perfect 100% and outrank
+  a genuine 60% over 300 chances.
+
+Both are one click from off, and while either is costing rows the chip row says
+so — "12 of 19 partners shown" — so a filtered list can't be mistaken for a
+short one. When the filters leave nothing behind the table is replaced by a
+"no partners match these filters" note rather than an empty frame.
 
 The table is **paginated 10 rows at a time** (`PAGE_SIZE`). A well-travelled
 player shares tournaments with a few dozen people and the tail of that list is a
 long column of single-digit rates nobody scrolls to; the pager keeps the section
 one screen tall while leaving every row reachable. Rank numbers run across the
 whole list (page two starts at 11) rather than restarting each screen, the
-"showing 11–20 of 34" line says where you are, and re-sorting jumps back to
-page 1 — the old page number would otherwise point at a different slice of the
-new order. The bars are scaled against the strongest read in the *whole* list,
-not the visible page, so paging doesn't rescale them under the reader.
+"showing 11–20 of 34" line says where you are, and re-sorting or flipping a
+filter jumps back to page 1 — the old page number would otherwise point at a
+different slice of the new order. Filtering happens before sorting and paging,
+so the rank numbers, the pager and the "of 34" all count the same rows.
 
 Three things are deliberately *not* here:
 
@@ -475,6 +489,72 @@ covers five tournaments is ranked over those five, not their whole career
 set). The section is gated on `hasData`, so a slice whose tournaments produced
 no list-bearing chance shows no heading at all rather than a heading over an
 empty table — the same treatment the match page gives its synergy block.
+
+### Most missed VNs and artists
+
+Under the synergy block, `/players/<name>` gains a **Most Missed** section: the
+VNs this player can't name and the artists they can't place, as one table with
+a VNs / Artists switcher. It reads the same slice as everything else on the
+tournaments the stat cards and the history table are showing — so it narrows
+with the Recent / All-Time switch and the mode chips too (`findPlayerMisses` in
+`lib/store.ts`, cached per player + filter + that exact set of match ids).
+
+The unit is one **question of the relevant answer type**, which is how the game
+asks: the VN table counts `Mst` (main-title) answers grouped by the song's VN
+source, the artist table counts `A` (artist) answers grouped by the export's
+credited artists — read through the same `readAnswers` walk the Guess Rate
+table and Team Synergy use (`lib/synergy.ts`), so the three can't drift on
+what a song asked. Other columns (song name, developer, …) feed neither table.
+A row's **Missed** count is therefore `Mst (or A) answers they got wrong /
+Mst (or A) answers they were asked`, and `100 − Miss %` is this player's
+per-type guess rate over that VN or artist. It is deliberately *not* a
+re-derivation of the pooled figure on the card above: that one weights each
+tournament by its songs, so a VN-only event (one asked type) counts for as much
+as a five-column one, while these rows pool questions.
+
+The exports only carry `IsGuessCorrect` on the answers a player got *right*, so
+"no flag" is the game's own way of saying wrong — a skipped question reads the
+same as a wrong one, and no second definition of "missed" is invented here.
+
+NGMC asks `Mst` only, so there the artist ranking is always empty and the
+section shows the VN table with no switcher; an Erumode slice whose tournaments
+never asked `A` lands in the same place. A song asked while the room had no VN
+source still counts its `A` answer (and vice versa) — the rankings are
+independent. The switcher defaults to VNs, since every mode asks `Mst`.
+
+Both rankings are floored and cut:
+
+- **At least 2 plays** (`MISS_MIN_PLAYS`). A VN the room drew once and this
+  player missed is a fact about the draw, not about them. The floor is counted
+  in *plays* — games the VN/artist came up in (with that answer asked) while
+  they were in the room — rather than in questions, so it means the same thing
+  in both modes. Same floor the match page's **Most Played VNs** table
+  uses (`VN_MIN_PLAYS`).
+- **Top 10** (`MISS_TOP_N`), the same cut as that table. The footnote under the
+  table says how much the two left behind — "10 of 313 missed VNs came up at
+  least 2 times".
+
+VNs are grouped by the export's own `Sources[0].Id` and artists by
+`Artists[i].Id` (`getVNSource` / `getArtists` in `lib/stats.ts`) rather than by
+name, so a VN or a singer spelled two ways across uploads is still one row. A song whose artist line credits several people counts
+for each of them, so a duet lands in both singers' rows instead of fragmenting
+into "A" and "A, B". Each row lists every missed song behind it, most-missed
+first: "Artist — Song" on the VN table, "VN — Song" on the artist table.
+
+Rows are ordered by misses first and Miss % second: how often they get it wrong
+is the question, and among rows missed the same number of times the one they
+missed a larger share of is the worse answer. The rate is coloured by `readHeat`
+(`components/SynergyReadValue.tsx`) read backwards — the same thirds the synergy
+tables use — so a performance that is 50% right is one colour across the page
+instead of green here and red there.
+
+A VN (or artist) they never missed is not a *missed* one and never reaches the
+table, and the whole section is gated on `hasData` like the synergy block, so a slice in
+which nothing was missed shows no heading at all rather than a heading over an
+empty table. The block is a client component for its VNs / Artists switcher
+(`components/PlayerMissesSection.tsx`): the rows of each ranking are still a
+top-N cut of a single ordering each, so there is nothing to sort, filter or
+page beyond the tab itself.
 
 ## Player Manager ranks
 

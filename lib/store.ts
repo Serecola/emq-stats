@@ -8,6 +8,7 @@ import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
 import { computePlayerSynergy, type PlayerSynergyStats } from './player-synergy';
+import { computePlayerMisses, type PlayerMissStats } from './player-misses';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, recentVnExpectedRanksFor, type PlayerRankRow } from './player-ranks';
 import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
 import { withAssumedZeroScores } from './schedule';
@@ -539,6 +540,39 @@ export async function findPlayerSynergy(
     );
     if (!matches.length) return null;
     return computePlayerSynergy(matches, uname, await listPlayerAliases());
+  });
+}
+
+/**
+ * One player's most-missed VNs and artists under `filter` — the input to the
+ * player page's Most Missed section, and the same shape of read as
+ * `findPlayerSynergy` above.
+ *
+ * Scoped to `matchIds` rather than to the whole filter, because the page shows
+ * one slice of a player's history at a time (see StatsRange): the caller hands
+ * over the tournaments the stat cards and the history table are reading, so a
+ * "last 5 of 12" page can't report a career-long ranking. Cached per player +
+ * filter + that exact set, which is what keeps the Recent / All-Time switch
+ * from re-walking every raw export on each render.
+ *
+ * Null when the name resolves to nobody in the slice, so the caller can leave
+ * the section off rather than render an empty table.
+ */
+export async function findPlayerMisses(
+  uname: string,
+  filter: MatchFilter,
+  matchIds: string[]
+): Promise<PlayerMissStats | null> {
+  await ensureSchema();
+  const key = resolveAliasKey(uname, await listPlayerAliases());
+  const scope = matchIds.join(',');
+  return cached(`player-misses:${filter.mode}:${filter.submode}:${key}:${scope}`, async () => {
+    const wanted = new Set(matchIds);
+    const matches = applyMatchFilter(statsMatches(await listMatches()), filter).filter((m) =>
+      wanted.has(m.id)
+    );
+    if (!matches.length) return null;
+    return computePlayerMisses(matches, uname, await listPlayerAliases());
   });
 }
 

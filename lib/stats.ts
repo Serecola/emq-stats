@@ -33,16 +33,50 @@ export function getSongTitle(song: any): string {
   return main.LatinTitle || main.NonLatinTitle || 'Unknown song';
 }
 
-export function getArtistNames(song: any): string {
+/**
+ * The people a song is credited to, each as the identity to group by and the
+ * name to show for them.
+ *
+ * The pool is the one the export's own artist line names: the *vocalists* when
+ * the song lists any, otherwise everyone credited (a song with no vocalist is
+ * still somebody's song, and dropping it would leave the artist line blank).
+ * Composer/Arranger/Lyricist entries are therefore ignored whenever a vocalist
+ * exists, which is what keeps this in step with `getArtistNames` below — the
+ * string the attack modal already prints for that song.
+ *
+ * Identity is the export's own `Artists[i].Id` — stable across songs and
+ * uploads, so one singer reached from two songs is one row — with the same
+ * normalized-title fallback `getVNSource` makes for an entry that carries no id
+ * (a hand-made or trimmed export). Ids are namespaced so a title key can never
+ * collide with a numeric id.
+ */
+export function getArtists(song: any): { id: string; name: string }[] {
   const artists = song?.Song?.Artists ?? [];
   const vocalists = artists.filter((a: any) => (a.Roles || []).includes('Vocals'));
   const pool = vocalists.length ? vocalists : artists;
-  const names = pool
-    .map((a: any) => {
-      const t = a.Titles && (a.Titles.find((x: any) => x.IsMainTitle) || a.Titles[0]);
-      return t && (t.LatinTitle || t.NonLatinTitle);
-    })
-    .filter(Boolean);
+  const out: { id: string; name: string }[] = [];
+  for (const a of pool) {
+    const t = a.Titles && (a.Titles.find((x: any) => x.IsMainTitle) || a.Titles[0]);
+    const name = t && (t.LatinTitle || t.NonLatinTitle);
+    if (!name) continue;
+    const raw = a?.Id;
+    const id = raw === undefined || raw === null || raw === '' ? '' : String(raw);
+    out.push({ id: id || `name:${norm(name)}`, name });
+  }
+  return out;
+}
+
+/**
+ * A song's artist line as one display string — the collaboration credit when
+ * several people are on it ("A, B"), truncated with `& others` past three names
+ * so a vocal ensemble doesn't push the song title off the row.
+ *
+ * Built from `getArtists` rather than walking `Song.Artists` a second time, so
+ * the line printed under a song and the identity the artist rankings group by
+ * can never disagree about who was on it.
+ */
+export function getArtistNames(song: any): string {
+  const names = getArtists(song).map((a) => a.name);
   if (!names.length) return 'Unknown artist';
   if (names.length > 3) return `${names.slice(0, 3).join(', ')} & others`;
   return names.join(', ');
