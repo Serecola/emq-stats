@@ -199,7 +199,7 @@ function computeGuessRateStats(match) {
             perType[t] = acc.songCount[3] ? (100 * acc.saCorrectCount[idx]) / acc.songCount[3] : 0;
         }
         // Off-list guess rate — the NGMC column's definition applied to the
-        // self-answer branch: the hits that weren't on their pre-made list over
+        // self-answer branch: the hits that weren't on their list over
         // the opportunities that weren't. Both sides carry the same
         // `activeTypes.length` multiplicity (every song is asked once per active
         // answer type), so it cancels and the result lands on the same 0-100 scale

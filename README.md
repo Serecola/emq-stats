@@ -408,7 +408,7 @@ its own reason for it:
   says so rather than printing 0% (the "VN only" tournaments here dash out four
   of the five);
 - **Off GR** — NGMC, which doesn't track off-list guessing at all;
-- **Rig GR** — nothing was on a pre-made list that tournament. **Rigs** still
+- **Rig GR** — nothing was on their list that tournament. **Rigs** still
   prints its `0` there: an empty list is a fact, a 0% rate over no guesses is
   not a measurement.
 
@@ -417,6 +417,64 @@ reproduce the per-mode denominators: Erumode counts a rig hit once per active
 answer type (so its denominator carries that multiplicity and the rate can't
 exceed 100%), while NGMC asks one question per song and divides by the list
 itself.
+
+### Player synergy
+
+Under the per-mode sections, `/players/<name>` gains a **Synergy** section: every
+other player this one has shared a tournament with, ranked by how much of whose
+list they land. It is the player-page companion to the match page's **Team
+Synergy** block, and it counts the same event — `lib/player-synergy.ts` imports
+`readAnswers` from `lib/synergy.ts` rather than re-walking the exports, so the
+two views cannot drift on what a song counted:
+
+- a **chance** is a song that was on somebody's list, asked while the reader was
+  in the room;
+- a **hit** is a chance the reader also got right;
+- every rate is `hits / chances`, printed beside its own counts.
+
+Each pairing carries both directions on one row — **You read them** (songs this
+player got right that were on their list) and **They read you** (the same
+relationship counted from the other end) — rather than two independently sorted
+lists, so a lopsided pairing is visible at a glance instead of having to be
+spotted by comparing positions across tables. The bar under each name is the
+read rate as a share of the strongest read in the table, so a bar scaled to its
+own row can't make 2/2 and 90/180 look identical. Columns are sortable by
+either direction or by name, and rates are coloured by `readHeat`
+(`components/SynergyReadValue.tsx`) — 50%+ green, 25–50% gold, under 25% red, so
+the column can be ranked without reading the numbers off it.
+
+The table is **paginated 10 rows at a time** (`PAGE_SIZE`). A well-travelled
+player shares tournaments with a few dozen people and the tail of that list is a
+long column of single-digit rates nobody scrolls to; the pager keeps the section
+one screen tall while leaving every row reachable. Rank numbers run across the
+whole list (page two starts at 11) rather than restarting each screen, the
+"showing 11–20 of 34" line says where you are, and re-sorting jumps back to
+page 1 — the old page number would otherwise point at a different slice of the
+new order. The bars are scaled against the strongest read in the *whole* list,
+not the visible page, so paging doesn't rescale them under the reader.
+
+Three things are deliberately *not* here:
+
+- **No self row.** A player's own correct guesses on their own list are exactly
+  their Rig GR, which the tournament history above already shows per tournament.
+- **No tournaments-shared count.** The chance count printed beside each rate is
+  already the evidence a pairing rests on; a second count would say less.
+- **No ally/enemy split.** That is meaningful within one room, where two players
+  are unambiguously teammates or opponents. Across tournaments the same two are
+  teammates one week and opponents the next, so both directions are pooled
+  instead.
+- **No unrostered names.** A name that appears in an export without a team has
+  no verifiable identity across tournaments — the same rule `lib/synergy.ts`
+  applies.
+
+The ranking is scoped to the tournaments the rest of the page is showing, by
+match id rather than by the whole mode filter, so it narrows with the Recent /
+All-Time switch like every other figure there: a player whose Recent slice
+covers five tournaments is ranked over those five, not their whole career
+(`findPlayerSynergy` in `lib/store.ts`, cached per player + filter + that exact
+set). The section is gated on `hasData`, so a slice whose tournaments produced
+no list-bearing chance shows no heading at all rather than a heading over an
+empty table — the same treatment the match page gives its synergy block.
 
 ## Player Manager ranks
 

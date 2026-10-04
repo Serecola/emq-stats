@@ -321,7 +321,7 @@ export default function GuessRateTable({
   const offlistGrColumn = <T extends { offlistGr: number }>(): Column<T> => ({
     key: 'offlistGr',
     label: 'Off GR',
-    title: 'Offlist GR — % correct among guesses not on their pre-made list',
+    title: 'Offlist GR — % correct among guesses not on their list',
     accessor: (r) => r.offlistGr,
     render: (r) => pct(r.offlistGr),
   });
@@ -332,7 +332,7 @@ export default function GuessRateTable({
     key: 'rigCount',
     label: 'Rigs',
     title:
-      'Rig Count — total guesses that were on their pre-made list; the percentage is that count over the songs they played',
+      'Rig Count — total guesses that were on their list; the percentage is that count over the songs they played',
     className: 'border-r border-border',
     accessor: (r) => r.rigCount,
     // The count with its share of the player's songs beside it — 26 (20.3%) —

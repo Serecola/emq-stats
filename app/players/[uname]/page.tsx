@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { findPlayerStats, listPlayerTags } from '@/lib/store';
+import { findPlayerStats, findPlayerSynergy, listPlayerTags } from '@/lib/store';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import ModeToggle from '@/components/ModeToggle';
 import StatsRangeToggle from '@/components/StatsRangeToggle';
 import ExpectationBadge from '@/components/ExpectationBadge';
+import PlayerSynergySection from '@/components/PlayerSynergySection';
+import type { PlayerSynergyStats } from '@/lib/player-synergy';
 import {
   entryExpectation,
   entryOfflistGr,
@@ -31,6 +33,22 @@ export const dynamic = 'force-dynamic';
 
 function pct(n: number): string {
   return `${n.toFixed(1)}%`;
+}
+
+/**
+ * A stat that failed to compute, shown in place of its section rather than
+ * taking the whole page down with it. Same treatment as the match page's copy
+ * (see its ErrorBox) — one malformed export shouldn't cost a reader every other
+ * number on the page.
+ */
+function ErrorBox({ label, err }: { label: string; err: unknown }) {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    <div className="rounded-lg border border-taken/40 bg-taken/5 p-4 text-sm">
+      <p className="font-semibold text-taken">{label} failed to compute</p>
+      <p className="mt-1 text-xs text-textSub">{message}</p>
+    </div>
+  );
 }
 
 export default async function PlayerPage({
@@ -103,6 +121,27 @@ export default async function PlayerPage({
   // splitting defensively keeps both sections honest for any future caller.
   const showErumode = filter.mode === 'Erumode' || erumodeEntries.length > 0;
   const showNgmc = filter.mode !== 'Erumode' || ngmcEntries.length > 0;
+
+  // Pairwise synergy — who this player reads and who reads them — over exactly
+  // the tournaments in view, so it narrows with the Recent / All-Time switch
+  // and the mode chips like everything else on the page. Scoped to the entries
+  // above rather than to the whole filter: a tournament they weren't rostered
+  // in is not in the history either, and `view` is already the sliced list.
+  // Computed here in the page body rather than inside the section so a thrown
+  // error is catchable — Server Component children can't be caught by this
+  // function's try/catch once React starts awaiting them, only errors raised
+  // in this body can, which is the same split the match page makes.
+  let synergy: PlayerSynergyStats | null = null;
+  let synergyError: unknown = null;
+  try {
+    synergy = await findPlayerSynergy(
+      player.uname,
+      filter,
+      view.entries.map((e) => e.matchId)
+    );
+  } catch (err) {
+    synergyError = err;
+  }
 
   return (
     <div className="space-y-6">
@@ -193,6 +232,27 @@ export default async function PlayerPage({
         view.erumode.matchesPlayed === 0 && (
           <p className="text-sm text-textMuted">No tournament data for this player yet.</p>
         )}
+
+      {/* Synergy — who this player reads and who reads them, across every other
+          player they've shared a tournament with. A section of its own rather
+          than another column on the cards above: it is the only figure on the
+          page that isn't about the player alone, so it has its own heading and
+          its own table instead of competing with the per-mode stat cards for
+          four slots. Gated on hasData for the same reason the match page gates
+          its synergy block — a page whose tournaments produced no list-bearing
+          chance in this player's room shows no heading at all, rather than a
+          heading over an empty table. */}
+      {synergyError ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
+          <ErrorBox label="Synergy" err={synergyError} />
+        </section>
+      ) : synergy?.hasData ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
+          <PlayerSynergySection stats={synergy} filter={filter} playerTags={tags} />
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -217,7 +277,7 @@ export default async function PlayerPage({
  *                    that ran only Mst + Artist has no Composer column to
  *                    report, and says so rather than printing 0%;
  *   Off GR         — NGMC, which doesn't track off-list guessing at all;
- *   Rig GR / Rigs  — nothing was on a pre-made list that tournament.
+ *   Rig GR / Rigs  — nothing was on their list that tournament.
  *
  * The NGMC-only attacks/blocks pair is drawn only in the table that mode is
  * shown in, so an Erumode section never prints em dashes for something Erumode
@@ -270,19 +330,19 @@ function MatchHistoryTable({
             ))}
             <th
               className="px-3 py-2 text-right font-medium"
-              title="Rig GR — % of guesses that were on this player’s pre-made list and correct"
+              title="Rig GR — % of guesses that were on this player’s list and correct"
             >
               Rig GR
             </th>
             <th
               className="px-3 py-2 text-right font-medium"
-              title="Offlist GR — % of guesses off the pre-made list that were correct"
+              title="Offlist GR — % of guesses offlist that were correct"
             >
               Off GR
             </th>
             <th
               className="px-3 py-2 text-right font-medium"
-              title="Rigs — guesses this player had on their pre-made list"
+              title="Rigs — guesses this player had on their list"
             >
               Rigs
             </th>

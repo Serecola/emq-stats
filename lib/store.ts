@@ -7,6 +7,7 @@ import { extractCatalogFromFiles } from './catalog';
 import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
+import { computePlayerSynergy, type PlayerSynergyStats } from './player-synergy';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, recentVnExpectedRanksFor, type PlayerRankRow } from './player-ranks';
 import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
 import { withAssumedZeroScores } from './schedule';
@@ -504,6 +505,41 @@ export async function findPlayerStats(
   // lands on the merged player rather than reporting "never played".
   const key = resolveAliasKey(uname, await listPlayerAliases());
   return summaries.find((p) => norm(p.uname) === key) ?? null;
+}
+
+/**
+ * One player's synergy against every other player they have shared a tournament
+ * with, under `filter` — the input to the player page's Synergy section.
+ *
+ * Scoped to `matchIds` rather than to the whole filter, because the page shows
+ * one slice of a player's history at a time (see StatsRange): the caller hands
+ * over the tournaments the stat cards and the history table are reading, so the
+ * ranking can never report all-time numbers under a "last 5 of 12" heading.
+ * Cached per player + filter + that exact set, which is what keeps the Recent /
+ * All-Time switch from re-walking every raw export on each render — the same
+ * trade `listPlayerStats` makes, one level narrower.
+ *
+ * Null when the name resolves to nobody in the slice, so the caller can leave
+ * the section off rather than render an empty table.
+ */
+export async function findPlayerSynergy(
+  uname: string,
+  filter: MatchFilter,
+  matchIds: string[]
+): Promise<PlayerSynergyStats | null> {
+  await ensureSchema();
+  // Aliases resolved first, so a page reached under an old username ranks the
+  // same player the rest of the page is about (see findPlayerStats).
+  const key = resolveAliasKey(uname, await listPlayerAliases());
+  const scope = matchIds.join(',');
+  return cached(`player-synergy:${filter.mode}:${filter.submode}:${key}:${scope}`, async () => {
+    const wanted = new Set(matchIds);
+    const matches = applyMatchFilter(statsMatches(await listMatches()), filter).filter((m) =>
+      wanted.has(m.id)
+    );
+    if (!matches.length) return null;
+    return computePlayerSynergy(matches, uname, await listPlayerAliases());
+  });
 }
 
 /**

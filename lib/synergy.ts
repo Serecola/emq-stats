@@ -6,10 +6,10 @@ import type { Match } from './types';
  * Team synergy — how well each player reads the *lists of the people around
  * them*, split by which side of the room those people are on.
  *
- * The unit of measurement is one "chance": a song that was on somebody's
- * pre-made list, asked while the reader was in the room. A "hit" is a chance
- * the reader also got right. Every number in this file is `hits / chances`, so
- * a rate is only ever shown next to the fraction it came from — 40% over 5
+ * The unit of measurement is one "chance": a song that was on somebody's list,
+ * asked while the reader was in the room. A "hit" is a chance the reader also
+ * got right. Every number in this file is `hits / chances`, so a rate is only
+ * ever shown next to the fraction it came from — 40% over 5
  * chances and 40% over 250 chances are not the same claim, and the counts are
  * what tell them apart.
  *
@@ -146,12 +146,19 @@ function add(cell: Cell, hit: boolean): void {
   if (hit) cell.hits++;
 }
 
-function read(chances: number, hits: number): SynergyRead {
+/**
+ * Builds a read from its raw counts. Exported rather than kept private because
+ * the player-page synergy ranking (lib/player-synergy.ts) accumulates the same
+ * kind of cell across several tournaments and has to wrap its pooled totals in
+ * the same type — one definition of "a rate is 0 when there were no chances"
+ * rather than two that could disagree.
+ */
+export function synergyRead(chances: number, hits: number): SynergyRead {
   return { chances, hits, rate: chances > 0 ? (100 * hits) / chances : 0 };
 }
 
 function asRead(cell: Cell): SynergyRead {
-  return read(cell.chances, cell.hits);
+  return synergyRead(cell.chances, cell.hits);
 }
 
 /**
@@ -163,13 +170,17 @@ function asRead(cell: Cell): SynergyRead {
  * missing "Mst" falls back to whatever entry is there rather than dropping the
  * song. Erumode walks ANSWER_TYPES, so only the types the room was actually
  * asked about produce chances.
+ *
+ * Exported so lib/player-synergy.ts reads a player's answers the exact same way
+ * the match page's Team Synergy block does — the two views count the same
+ * events, and a second copy of the walk is how they would stop agreeing.
  */
-interface SongAnswers {
+export interface SongAnswers {
   username: string;
   byType: Record<string, { correct: boolean; onList: boolean }>;
 }
 
-function readAnswers(pd: any, isErumode: boolean): SongAnswers | null {
+export function readAnswers(pd: any, isErumode: boolean): SongAnswers | null {
   const keys = Object.keys(pd ?? {});
   if (keys.length === 0) return null;
   const first = pd[keys[0]];
@@ -313,7 +324,7 @@ const finalize = (a: MemberAccum): SynergyMember => ({
         chances += r.chances;
         hits += r.hits;
       }
-      return read(chances, hits);
+      return synergyRead(chances, hits);
     };
 
     const allyRead = pooled((m) => m.vsAlly);

@@ -38,9 +38,8 @@ export interface PlayerMatchEntry {
   // single-tournament reading.
   //
   // `rigCount`/`rigHits` are set for both modes; the offlist pair only exists
-  // for Erumode, which is the only mode that tracks guesses outside the
-  // pre-made list.
-  rigCount?: number; // guesses on their pre-made list
+  // for Erumode, which is the only mode that tracks guesses made off the list.
+  rigCount?: number; // guesses on their list
   rigHits?: number; // of those, correct (once per active answer type, Erumode)
   offlistCount?: number; // guesses not on the list (same multiplicity)
   offlistHits?: number; // correct guesses not on the list
@@ -65,8 +64,8 @@ export function entryExpectation(e: PlayerMatchEntry): ExpectationLabel | null {
 }
 
 /**
- * One tournament's Rig GR, or null when that tournament had nothing on a
- * pre-made list.
+ * One tournament's Rig GR, or null when that tournament had nothing on the
+ * player's list.
  *
  * Erumode asks one question per *active* answer type, so a rig hit is counted
  * once per type while the rig list itself is one per song — the denominator
@@ -314,7 +313,7 @@ export function computeAllPlayerStats(
           // Same lookup as the Erumode branch above, and the same one the match
           // Guess Rate table does: playerRanks keyed by normalized username.
           rank: match.playerRanks?.[norm(row.uname)],
-          // NGMC asks one question per song and still has a pre-made list, so
+          // NGMC asks one question per song and still has a list, so
           // the rig counts come along for Rigs / Rig GR in the player's history.
           // The offlist pair stays unset — NGMC doesn't track off-list guessing.
           rigCount: row.rigCount,

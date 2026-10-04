@@ -26,10 +26,10 @@ export interface NgmcGuessRow {
   opGr: number;
   edGr: number;
   insGr: number;
-  rigHits: number; // correct guesses that were on their pre-made list
+  rigHits: number; // correct guesses that were on their list
   rigGr: number; // % of their on-list guesses that were correct
-  rigCount: number; // total guesses that were on their pre-made list
-  offlistGr: number; // % correct among guesses NOT on their pre-made list
+  rigCount: number; // total guesses that were on their list
+  offlistGr: number; // % correct among guesses NOT on their list
   correct: number;
   songs: number;
   games: number;
@@ -57,7 +57,7 @@ export interface ErumodeGuessRow {
   rigHits: number; // on-list guesses correct, once per active answer type
   offlistHits: number; // correct guesses not on the list (same multiplicity)
   offlistCount: number; // guesses not on the list (same multiplicity)
-  offlistGr: number; // % correct among guesses NOT on their pre-made list
+  offlistGr: number; // % correct among guesses NOT on their list
   songs: number;
   games: number;
   performance: number;
@@ -282,7 +282,7 @@ export function computeGuessRateStats(
       perType[t] = acc.songCount[3] ? (100 * acc.saCorrectCount[idx]) / acc.songCount[3] : 0;
     }
     // Off-list guess rate — the NGMC column's definition applied to the
-    // self-answer branch: the hits that weren't on their pre-made list over
+    // self-answer branch: the hits that weren't on their list over
     // the opportunities that weren't. Both sides carry the same
     // `activeTypes.length` multiplicity (every song is asked once per active
     // answer type), so it cancels and the result lands on the same 0-100 scale

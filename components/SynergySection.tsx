@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import { teamColor } from '@/lib/team-colors';
-import type { SynergyMember, SynergyRead, SynergyStats, SynergyTeam } from '@/lib/synergy';
+import type { SynergyMember, SynergyStats, SynergyTeam } from '@/lib/synergy';
 import type { PlayerTag } from '@/lib/types';
 import {
   DENSE_CELL_PAD,
@@ -13,6 +13,7 @@ import {
   toggleSort,
   type SortDir,
 } from './SortableTable';
+import ReadValue from './SynergyReadValue';
 import PlayerTagBadge from './PlayerTagBadge';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
@@ -28,19 +29,6 @@ const KEY_OF: Record<SortKey, (m: SynergyMember) => number | string> = {
 };
 
 /**
- * Exposure heat for the read columns: how much of a list the room lands, where
- * more is worse news for that list's owner — red once it climbs, plain text
- * below 25% where the rate is mostly small-sample noise. Deliberately *not*
- * the scale List Difficulty uses: these columns measure what got read of you,
- * that one measures how well your list held.
- */
-function heat(rate: number): string {
-  if (rate >= 50) return 'text-taken';
-  if (rate >= 25) return 'text-accent';
-  return 'text-textSub';
-}
-
-/**
  * List Difficulty's scale — red / yellow / green, low to high — for the one
  * column here where more is better: a list nobody finds is a tough list.
  *
@@ -52,30 +40,14 @@ function heat(rate: number): string {
  *
  * Uses the app's existing red / gold / green tokens, so the scale survives the
  * theme flip — each one has its own light and dark step (see app/globals.css).
+ * Same direction as `readHeat` (high is the good outcome) but keyed to the
+ * narrower band List Difficulty actually occupies, which is why the two can't
+ * share one scale — see SynergyReadValue.tsx.
  */
 function difficultyHeat(rate: number): string {
   if (rate >= 40) return 'text-promote';
   if (rate >= 30) return 'text-accent';
   return 'text-taken';
-}
-
-/**
- * A read as `12.5%` over `5/40`. No chances at all renders as an em dash
- * rather than `0.0%` — "nobody's list ever came up" and "they read it and
- * missed" are different facts, and only one of them is a 0% result.
- */
-function ReadValue({ read, color }: { read: SynergyRead; color?: boolean }) {
-  if (read.chances === 0) return <span className="text-textDim">—</span>;
-  return (
-    <span className="whitespace-nowrap">
-      <span className={color ? `font-medium ${heat(read.rate)}` : 'text-text'}>
-        {read.rate.toFixed(1)}%
-      </span>
-      <span className="ml-1 text-[0.68rem] tabular-nums text-textDim">
-        {read.hits}/{read.chances}
-      </span>
-    </span>
-  );
 }
 
 function TeamLabel({ team }: { team: SynergyTeam }) {
