@@ -1,6 +1,7 @@
 ﻿import { norm } from './stats';
 import { computeMatchStats } from './stats';
 import { computeGuessRateStats } from './guess-stats';
+import { expectationFromDiff, type ExpectationLabel } from './expectation';
 import { resolveAliasKey, withAliases, type PlayerAliases } from './player-aliases';
 import type { Match } from './types';
 
@@ -14,6 +15,12 @@ export interface PlayerMatchEntry {
   // Performance = the mode/submode rating (see guess-stats.ts) — the number
   // the match Guess Rate table shows and rates players by.
   performance: number;
+  // The "(N)" beside this player's name in *this tournament's* roster paste
+  // (Match.playerRanks, keyed by normalized username) — the rank they were
+  // listed at, which is what this tournament's Performance is graded against
+  // (see entryExpectation). Absent when the roster wasn't annotated, which is
+  // a different thing from a rank of zero.
+  rank?: number;
   // VN-only (Mst) reading of an Erumode tournament, carried per entry so a
   // ranged view can pool VN Guess Rate (songs-weighted) and VN Expected Rank
   // (songs-weighted mean of these) exactly like the combined figures. Null
@@ -24,12 +31,17 @@ export interface PlayerMatchEntry {
   // AnsType string — present only on Erumode entries, and only those types
   // that were active in that tournament.
   perType?: Record<string, number>;
-  // Erumode only — the raw counts behind Rig GR / Offlist GR for that
-  // tournament, carried as numerator/denominator so a ranged view can pool
-  // them exactly (sum the counts, divide once) instead of averaging
-  // per-tournament percentages. See erumodeSplitStats.
+  // The raw counts behind Rig GR / Offlist GR for that tournament, carried as
+  // numerator/denominator so a ranged view can pool them exactly (sum the
+  // counts, divide once) instead of averaging per-tournament percentages. See
+  // erumodeSplitStats for the Erumode pooling and entryRigGr for the
+  // single-tournament reading.
+  //
+  // `rigCount`/`rigHits` are set for both modes; the offlist pair only exists
+  // for Erumode, which is the only mode that tracks guesses outside the
+  // pre-made list.
   rigCount?: number; // guesses on their pre-made list
-  rigHits?: number; // of those, correct (once per active answer type)
+  rigHits?: number; // of those, correct (once per active answer type, Erumode)
   offlistCount?: number; // guesses not on the list (same multiplicity)
   offlistHits?: number; // correct guesses not on the list
   // NGMC only:
@@ -38,6 +50,46 @@ export interface PlayerMatchEntry {
   effTaken?: number;
   blocked?: number;
   effBlocked?: number;
+}
+
+/**
+ * The promotion verdict for one tournament: their Performance in it against the
+ * rank they were listed at in it, through the same thresholds the match Guess
+ * Rate table uses (`expectationFromDiff`). Null when the roster carried no rank,
+ * since there is nothing to compare against — the same rule that table applies,
+ * so a tournament's history can't disagree with how that tournament scored it.
+ */
+export function entryExpectation(e: PlayerMatchEntry): ExpectationLabel | null {
+  if (e.rank === undefined) return null;
+  return expectationFromDiff(e.performance - e.rank);
+}
+
+/**
+ * One tournament's Rig GR, or null when that tournament had nothing on a
+ * pre-made list.
+ *
+ * Erumode asks one question per *active* answer type, so a rig hit is counted
+ * once per type while the rig list itself is one per song — the denominator
+ * carries that same multiplicity (see the note in erumodeSplitStats), or the
+ * rate could exceed 100% on a multi-type event. NGMC asks a single question
+ * per song, so there the denominator is just the list.
+ */
+export function entryRigGr(e: PlayerMatchEntry): number | null {
+  const count = e.rigCount ?? 0;
+  if (count === 0) return null;
+  const attempts = e.mode === 'Erumode' ? count * Object.keys(e.perType ?? {}).length : count;
+  return attempts > 0 ? (100 * (e.rigHits ?? 0)) / attempts : null;
+}
+
+/**
+ * One tournament's Offlist GR, or null when it had no off-list opportunities.
+ * The offlist counts already carry the per-answer-type multiplicity Erumode
+ * applies, so they divide as they are. NGMC entries never carry them — that
+ * mode doesn't track off-list guessing — which reads as null, i.e. "—".
+ */
+export function entryOfflistGr(e: PlayerMatchEntry): number | null {
+  const count = e.offlistCount ?? 0;
+  return count > 0 ? (100 * (e.offlistHits ?? 0)) / count : null;
 }
 
 export interface NgmcAggregate {
@@ -218,6 +270,11 @@ export function computeAllPlayerStats(
           songs: row.songs,
           guessRate: row.guessRate,
           performance: row.performance,
+          // The roster's own "(N)" for this player, if it was annotated — looked
+          // up under the same normalized name the match Guess Rate table uses
+          // (`playerRanks[norm(uname)]`), so this tournament's history shows the
+          // same rank that tournament's own table graded them against.
+          rank: match.playerRanks?.[key],
           vnGuessRate: row.vnGuessRate,
           vnPerformance: row.vnPerformance,
           perType: { ...(guessStats.activeTypes.length > 0 ? row.perType : {}) },
@@ -254,6 +311,14 @@ export function computeAllPlayerStats(
           correct: row.correct,
           guessRate: row.guessRate,
           performance: row.performance,
+          // Same lookup as the Erumode branch above, and the same one the match
+          // Guess Rate table does: playerRanks keyed by normalized username.
+          rank: match.playerRanks?.[norm(row.uname)],
+          // NGMC asks one question per song and still has a pre-made list, so
+          // the rig counts come along for Rigs / Rig GR in the player's history.
+          // The offlist pair stays unset — NGMC doesn't track off-list guessing.
+          rigCount: row.rigCount,
+          rigHits: row.rigHits,
           ...(atk
             ? { taken: atk.taken, effTaken: atk.effTaken, blocked: atk.blocked, effBlocked: atk.effBlocked }
             : {}),
@@ -391,6 +456,29 @@ export function slicePlayerSummary(player: PlayerSummary, limit: number): Player
   return sliced;
 }
 
+/**
+ * The five Erumode answer types the split guess-rate columns are drawn from, in
+ * column order: the raw `AnsType` key to read from `ErumodeSplitStats.perType`,
+ * the short header label, and the full wording behind it on hover.
+ *
+ * One list, shared by the players list (`components/PlayerListTable.tsx`) and
+ * the player page's ladder summary (`components/PlayerRankSummary.tsx`), so
+ * "VN" / "Artist" / "SN" / "Dev" / "Comp" can't come to mean two different
+ * columns in two places — the same rule ANSWER_TYPE_LABELS follows inside the
+ * match Guess Rate table.
+ *
+ * The types are always drawn in this fixed order rather than "whatever the
+ * tournament asked", so a table keeps its shape from event to event; a type no
+ * tournament in range asked simply has no rate to print (see the `—` handling in
+ * the components).
+ */
+export const SPLIT_TYPES = [
+  { type: 'Mst', label: 'VN', title: 'Main title guess rate' },
+  { type: 'A', label: 'Artist', title: 'Artist guess rate' },
+  { type: 'Mt', label: 'SN', title: 'Song name guess rate' },
+  { type: 'Developer', label: 'Dev', title: 'Developer guess rate' },
+  { type: 'Composer', label: 'Comp', title: 'Composer guess rate' },
+] as const;
 /**
  * One player's Erumode split guess figures pooled over exactly the entries
  * handed in — the /players list's Erumode-only columns (per-answer-type GR,

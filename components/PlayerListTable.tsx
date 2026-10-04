@@ -15,7 +15,7 @@ import PlayerTagBadge from '@/components/PlayerTagBadge';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu';
 import type { PlayerTagOverrides } from '@/lib/player-tags';
-import type { ErumodeSplitStats, PlayerSummary } from '@/lib/player-stats';
+import { SPLIT_TYPES, type ErumodeSplitStats, type PlayerSummary } from '@/lib/player-stats';
 import type { PlayerRankRow } from '@/lib/player-ranks';
 import type { Mode, Submode } from '@/lib/types';
 
@@ -39,21 +39,6 @@ export interface PlayerRow {
 }
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
-
-/**
- * The Erumode split guess-rate columns: a fixed set of five answer types
- * rather than the match Guess Rate table's "whatever this tournament ran", so
- * the list keeps the same shape from event to event. Labels and hover titles
- * mirror ANSWER_TYPE_LABELS / ANSWER_TYPE_NAMES in components/GuessRateTable.tsx
- * (same wording, so VN here and VN there mean the same number).
- */
-const SPLIT_TYPES: { type: string; label: string; title: string }[] = [
-  { type: 'Mst', label: 'VN', title: 'Main title guess rate' },
-  { type: 'A', label: 'Artist', title: 'Artist guess rate' },
-  { type: 'Mt', label: 'Song', title: 'Song name guess rate' },
-  { type: 'Developer', label: 'Dev', title: 'Developer guess rate' },
-  { type: 'Composer', label: 'Comp', title: 'Composer guess rate' },
-];
 
 /**
  * How many rates get a medal. Every rate column in the Erumode block flags its

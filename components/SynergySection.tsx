@@ -27,10 +27,36 @@ const KEY_OF: Record<SortKey, (m: SynergyMember) => number | string> = {
   songs: (m) => m.songs,
 };
 
+/**
+ * Exposure heat for the read columns: how much of a list the room lands, where
+ * more is worse news for that list's owner — red once it climbs, plain text
+ * below 25% where the rate is mostly small-sample noise. Deliberately *not*
+ * the scale List Difficulty uses: these columns measure what got read of you,
+ * that one measures how well your list held.
+ */
 function heat(rate: number): string {
   if (rate >= 50) return 'text-taken';
   if (rate >= 25) return 'text-accent';
   return 'text-textSub';
+}
+
+/**
+ * List Difficulty's scale — red / yellow / green, low to high — for the one
+ * column here where more is better: a list nobody finds is a tough list.
+ *
+ * The bands come from what real tournaments produce (across the 60
+ * team-tournaments stored on this site the value spans 21–53%, median 35%, with
+ * 72% under 40%), rather than from round numbers picked blind: under 30% is a
+ * list the room walks through, 30–40% is the ordinary middle most tournaments
+ * land in, and 40%+ is a list that actually held up.
+ *
+ * Uses the app's existing red / gold / green tokens, so the scale survives the
+ * theme flip — each one has its own light and dark step (see app/globals.css).
+ */
+function difficultyHeat(rate: number): string {
+  if (rate >= 40) return 'text-promote';
+  if (rate >= 30) return 'text-accent';
+  return 'text-taken';
 }
 
 /**
@@ -65,7 +91,9 @@ function TeamLabel({ team }: { team: SynergyTeam }) {
  * Per-team summary, ranked toughest-lists-first. Ally Offlist, Enemy Offlist
  * and Enemy Snipe are each shown as a rate over the pooled counts behind it;
  * List Difficulty is the mean of Ally Offlist and Enemy Snipe, and is the only
- * column that claims a direction is good.
+ * column that claims a direction is good — which is why it's the only one
+ * coloured by `difficultyHeat` (red → yellow → green) rather than by the
+ * `heat` exposure scale the read columns share.
  */
 function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
   return (
@@ -129,7 +157,7 @@ function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
                 {team.listdifficulty === null ? (
                   <span className="text-textDim">—</span>
                 ) : (
-                  <span className={`font-medium ${heat(team.listdifficulty)}`}>
+                  <span className={`font-medium ${difficultyHeat(team.listdifficulty)}`}>
                     {team.listdifficulty.toFixed(1)}%
                   </span>
                 )}

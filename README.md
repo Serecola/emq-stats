@@ -386,6 +386,38 @@ not a 404: their unfiltered name still resolves, and the same chips stay on
 screen so the way forward is to pick a mode where they do have tournaments. Only
 a name that matches nobody at all 404s.
 
+The per-tournament history table carries the same figures that tournament's own
+Guess Rate table shows for that player, one row per tournament: **Rank** (the
+"(N)" beside their name in that tournament's roster), **Perf** (their Performance
+there), **Expect** (the promotion verdict from Perf − Rank, through the shared
+`expectationFromDiff` thresholds, so this table can never disagree with how that
+tournament scored them), **GR**, then **VN / Artist / SN / Dev / Comp**,
+**Rig GR**, **Off GR**, **Rigs** and **Songs** — plus the NGMC-only
+Attacks/Blocks pair in the NGMC table. The five answer-type columns come from one
+shared list, `SPLIT_TYPES` in `lib/player-stats.ts`, also used by `/players`, so
+"VN" and "Artist" can't come to mean two different columns in two places.
+
+A `—` means "not measured in that tournament", never a zero, and each column has
+its own reason for it:
+
+- **Rank / Expect** — that tournament's roster carried no "(N)" next to this
+  player's name, so there's nothing to grade Performance against;
+- **VN** — an Erumode tournament that never asked Mst;
+- **Artist / SN / Dev / Comp** — an answer type that tournament didn't ask: a
+  Normal event that ran only Mst + Artist has no Composer column to report, and
+  says so rather than printing 0% (the "VN only" tournaments here dash out four
+  of the five);
+- **Off GR** — NGMC, which doesn't track off-list guessing at all;
+- **Rig GR** — nothing was on a pre-made list that tournament. **Rigs** still
+  prints its `0` there: an empty list is a fact, a 0% rate over no guesses is
+  not a measurement.
+
+The per-tournament rig rates come from `entryRigGr` / `entryOfflistGr`, which
+reproduce the per-mode denominators: Erumode counts a rig hit once per active
+answer type (so its denominator carries that multiplicity and the rate can't
+exceed 100%), while NGMC asks one question per song and divides by the list
+itself.
+
 ## Player Manager ranks
 
 `/admin/players` works inside one gamemode **and** sub-mode at a time (e.g.

@@ -75,8 +75,7 @@ export default function VnPlaysSection({ stats }: { stats: VnPlayStats }) {
       </div>
       <p className="text-xs text-textDim">
         {qualifiers}
-        {stats.qualified > VN_TOP_N ? `, showing the top ${VN_TOP_N}` : ''} ·{' '}
-        {stats.totalSongs} song{stats.totalSongs === 1 ? '' : 's'} asked in view
+        {stats.qualified > VN_TOP_N ? `, showing the top ${VN_TOP_N}` : ''}
       </p>
     </div>
   );
