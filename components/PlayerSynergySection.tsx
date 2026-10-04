@@ -156,12 +156,12 @@ function PartnerTable({
               <th className={`${DENSE_CELL_PAD} w-8 text-left font-medium`}>#</th>
               <th className={`${DENSE_CELL_PAD} text-left font-medium`}>Player</th>
               {header(
-                'You read them',
+                'You snipe them',
                 'read',
                 'Songs this player correctly guessed that were on their list'
               )}
               {header(
-                'They read you',
+                'They snipe you',
                 'readBy',
                 'Songs this player got right that were on your list'
               )}
