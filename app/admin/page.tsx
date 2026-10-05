@@ -8,6 +8,8 @@ import ExcludeStatsToggle from '@/components/ExcludeStatsToggle';
 import ExportAllButton from '@/components/ExportAllButton';
 import LogoutButton from '@/components/LogoutButton';
 import { applyMatchFilter, matchFilterLabel, parseMatchFilter } from '@/lib/match-filter';
+import { paginate, parsePage } from '@/lib/pagination';
+import PaginationNav from '@/components/PaginationNav';
 import { withBasePath } from '@/lib/base-path';
 import { weekRangeLabel, weekStart } from '@/lib/week';
 import type { MatchSummary } from '@/lib/types';
@@ -17,13 +19,14 @@ export const dynamic = 'force-dynamic';
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: { mode?: string; submode?: string };
+  searchParams: { mode?: string; submode?: string; page?: string };
 }) {
   // Admin gate (see lib/admin-session.ts — the Edge middleware cannot read the
   // secret, so the check that matters lives here in the Node runtime).
   await requireAdminPage('/admin');
 
   const filter = parseMatchFilter(searchParams);
+  const page = parsePage(searchParams);
 
   const allMatches = await listMatchSummaries();
   const matches = applyMatchFilter(allMatches, filter);
@@ -33,6 +36,11 @@ export default async function AdminPage({
   // inside each section, so the first Past row compares against Current to
   // decide whether it opens a new week.
   const [current, ...past] = matches;
+  // Past is paginated, Current isn't — the newest tour stays on screen whatever
+  // page is open. Slicing happens after the mode filter, so `?page=` composes
+  // with it, and a mode change (whose links carry no `page=`) lands back on
+  // page 1 of the newly filtered list.
+  const pastPage = paginate(past, page);
 
   return (
     <div className="space-y-6">
@@ -79,21 +87,27 @@ export default async function AdminPage({
             </section>
           )}
           {past.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-textMuted">
+            <section className="space-y-3">
+              {/* Page nav above the heading, same as the player view (see
+                  app/page.tsx) — this list grows with every tour, and the nav
+                  belongs at the top of the list it walks. */}
+              <PaginationNav basePath="/admin" searchParams={searchParams} page={pastPage} />
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">
                 Past tournaments
               </h2>
               <div className="divide-y divide-borderSub rounded-lg border border-border bg-surface">
-                {past.map((m, i) => {
+                {pastPage.items.map((m, i) => {
                   // Tournaments come back ordered by their own date (see
                   // listMatchSummaries), so every tour of a given week is already
                   // contiguous and comparing against the row above is all it takes
                   // to know where a divider belongs — under the mode filter too,
-                  // which keeps the order and only drops rows. The row above
-                  // lives in `matches` at offset i — past[0]'s predecessor is
-                  // the Current card — so the divider also appears when Past
-                  // opens in a different week than Current.
-                  const newWeek = weekStart(matches[i].date) !== weekStart(m.date);
+                  // which keeps the order and only drops rows. The row above is
+                  // the one in the *whole* filtered list at the absolute index
+                  // (Current, plus this page's offset, plus the row), so a week
+                  // still opens its band at the top of a later page, where the
+                  // row above isn't rendered.
+                  const prev = matches[pastPage.offset + i];
+                  const newWeek = weekStart(prev.date) !== weekStart(m.date);
                   return (
                     <Fragment key={m.id}>
                       {/* Week divider *between* tours: every later week opens with

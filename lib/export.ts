@@ -6,8 +6,9 @@ import type { Match } from './types';
  * file, and a manifest that carries everything the game export *doesn't*.
  *
  * A raw EMQ export is only the record of a game. The tournament around it — the
- * roster, the entered scores, the name fixes (`renames`), the per-player ranks,
- * and which bracket slot each upload belongs to — lives in the app, so a pile of
+ * roster, the entered scores, the name fixes (`renames`), the substitutes who
+ * filled roster slots (`substitutes`), the per-player ranks, and which bracket
+ * slot each upload belongs to — lives in the app, so a pile of
  * JSONs on its own is not a backup. `manifest.json` is the half that makes the
  * archive restorable rather than merely readable, and it is also the only part
  * an importer would need to read first.
@@ -52,6 +53,8 @@ export interface ExportedMatch {
   createdAt: string;
   teams: string[][];
   renames: Record<string, string>;
+  /** norm(JSON name) -> roster player they substituted for — see Match. */
+  substitutes: Record<string, string>;
   playerRanks: Record<string, number>;
   excludeFromStats: boolean;
   fileCount: number;
@@ -179,7 +182,7 @@ export function buildExport(
     const fixtures = fixturesBySlot(match);
     const fixtureByFileId = new Map<string, Fixture>();
     for (const [slot, file] of Object.entries(
-      matchFilesToBracket(match.teams, match.files, match.renames).bySlot
+      matchFilesToBracket(match.teams, match.files, match.renames, match.substitutes).bySlot
     )) {
       const fixture = fixtures.get(slot);
       if (fixture) fixtureByFileId.set(file.id, fixture);
@@ -214,6 +217,7 @@ export function buildExport(
       createdAt: match.createdAt,
       teams: match.teams,
       renames: match.renames,
+      substitutes: match.substitutes ?? {},
       playerRanks: match.playerRanks,
       excludeFromStats: match.excludeFromStats ?? false,
       fileCount: match.files.length,

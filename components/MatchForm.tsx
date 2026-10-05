@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import type { Match, MatchFile, Mode, Region, SetRanks, Submode } from '@/lib/types';
@@ -21,6 +21,7 @@ import {
 } from '@/lib/schedule';
 import type { BracketMatchup } from '@/lib/schedule';
 import { matchResultsToFixtures, parseResultsTsv } from '@/lib/import-results';
+import { detectSubstituteQuestions, type SubstituteQuestion } from '@/lib/substitutes';
 import { formatMatchTitle } from '@/lib/match-title';
 import { extractUsernames } from '@/lib/stats';
 
@@ -110,6 +111,22 @@ export default function MatchForm({
     return initial;
   });
   const [renames, setRenames] = useState<Record<string, string>>(existing?.renames ?? {});
+  // Substitute answers: norm(JSON name) -> roster player they stood in for.
+  // The other half of name reconciliation — see lib/substitutes.ts for the
+  // detection that asks, and setSubstitute below for what an answer means.
+  const [substitutes, setSubstitutes] = useState<Record<string, string>>(
+    existing?.substitutes ?? {}
+  );
+  // Pending "substitute or rename?" questions, asked one dialog at a time.
+  // Filled by addUploads when an export is *almost* the pasted roster.
+  const [subQuestions, setSubQuestions] = useState<(SubstituteQuestion & { fileLabel: string })[]>(
+    []
+  );
+  // Every name we've already asked about this session — including ones the
+  // admin deferred. Without it, each further upload carrying the same odd
+  // name would pop the dialog again; the unmatched-names panel stays the
+  // place to answer later.
+  const askedSubNames = useRef<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [teamSource, setTeamSource] = useState<'paste' | 'draft'>('paste');
@@ -187,8 +204,8 @@ export default function MatchForm({
   );
 
   const assignment = useMemo(
-    () => matchFilesToBracket(parsedTeams, filesForMatch, renames),
-    [parsedTeams, filesForMatch, renames]
+    () => matchFilesToBracket(parsedTeams, filesForMatch, renames, substitutes),
+    [parsedTeams, filesForMatch, renames, substitutes]
   );
   const draftById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files]);
 
@@ -261,6 +278,10 @@ export default function MatchForm({
     return [...firstSeen.entries()]; // [normalizedKey, rawName][]
   }, [parsedDrafts, rosterNames, rosterSetNorm]);
 
+  // The two readings of an odd name are mutually exclusive — a name is
+  // either the same person renamed or a different person filling a slot —
+  // so setting one always clears the other (and the panel's "leave as-is"
+  // clears both).
   function setRename(oldNameNorm: string, newName: string) {
     setRenames((prev) => {
       const next = { ...prev };
@@ -268,6 +289,37 @@ export default function MatchForm({
       else delete next[oldNameNorm];
       return next;
     });
+    if (newName) {
+      setSubstitutes((prev) => {
+        if (!prev[oldNameNorm]) return prev;
+        const next = { ...prev };
+        delete next[oldNameNorm];
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Records `oldNameNorm` as a different person who stood in for
+   * `replacedName` (a roster player) — or clears the answer with an empty
+   * name. Unlike a rename this never merges identities: the sub's stats stay
+   * their own, they just count as part of that player's team.
+   */
+  function setSubstitute(oldNameNorm: string, replacedName: string) {
+    setSubstitutes((prev) => {
+      const next = { ...prev };
+      if (replacedName) next[oldNameNorm] = replacedName;
+      else delete next[oldNameNorm];
+      return next;
+    });
+    if (replacedName) {
+      setRenames((prev) => {
+        if (!prev[oldNameNorm]) return prev;
+        const next = { ...prev };
+        delete next[oldNameNorm];
+        return next;
+      });
+    }
   }
 
   // Single intake for every upload path — a match box's file picker, a drop
@@ -331,6 +383,64 @@ export default function MatchForm({
         return next;
       });
     }
+
+    // Does any of these exports read as the pasted roster with someone
+    // swapped out — 4-5 of the game's six players matching, 1-2 names
+    // changed? If so, ask whether each changed name is a substitute for a
+    // specific player or the same player renamed: the two answers move
+    // stats in opposite directions, so guessing is not an option. Asked
+    // once per name per session (askedSubNames), and only against a roster
+    // — detection is meaningless without one.
+    if (parsedTeams.length > 0) {
+      const asked: (SubstituteQuestion & { fileLabel: string })[] = [];
+      for (const draft of drafts) {
+        let data: unknown;
+        try {
+          data = JSON.parse(draft.text);
+        } catch {
+          continue; // invalid JSON surfaces as a form error on save, not here
+        }
+        for (const q of detectSubstituteQuestions(data, parsedTeams, renames, substitutes)) {
+          if (askedSubNames.current.has(q.key)) continue;
+          askedSubNames.current.add(q.key);
+          asked.push({ ...q, fileLabel: draft.label });
+        }
+      }
+      if (asked.length > 0) setSubQuestions((prev) => [...prev, ...asked]);
+    }
+  }
+
+  /**
+   * Answers the question currently on screen (the queue's head) and moves
+   * to the next one. "later" simply drops it — the name stays in the
+   * unmatched-names panel, where the same rename/substitute choice is one
+   * select away, and askedSubNames keeps the dialog from nagging about it
+   * again this session.
+   */
+  function answerSubQuestion(kind: 'sub' | 'rename' | 'later', target: string) {
+    const q = subQuestions[0];
+    if (!q) return;
+    if (kind === 'sub' && target) setSubstitute(q.key, target);
+    if (kind === 'rename' && target) setRename(q.key, target);
+    setSubQuestions((prev) => prev.slice(1));
+  }
+
+  /**
+   * Detaches drafts by id, along with any scores entered against them — the
+   * shared body of every removal here, so the single-file, duplicate and
+   * "clear everything" paths can't drift on what a removal takes with it.
+   */
+  function detachFiles(ids: Iterable<string>) {
+    const removing = new Set(ids);
+    if (removing.size === 0) return;
+    setFiles((prev) => prev.filter((f) => !removing.has(f.id)));
+    setScores((prev) => {
+      const next: typeof prev = {};
+      for (const [id, entry] of Object.entries(prev)) {
+        if (!removing.has(id)) next[id] = entry;
+      }
+      return next;
+    });
   }
 
   /**
@@ -349,12 +459,60 @@ export default function MatchForm({
     ) {
       return;
     }
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    setScores((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+    detachFiles([id]);
+  }
+
+  /**
+   * Drops every exact copy at once — the same thing as pressing Remove on each
+   * line of the duplicates panel, in one confirmation. The first copy of each
+   * group is kept (see duplicateGroups), so this can never delete a group
+   * whole or promote a copy into its place.
+   */
+  function removeDuplicateFiles() {
+    const count = duplicateIds.size;
+    if (count === 0) return;
+    if (
+      !confirm(
+        `Remove all ${count} duplicate upload${count === 1 ? '' : 's'}?\n\n` +
+          `Each one is an exact copy of another file already attached, so keeping it ` +
+          `counts the same game twice everywhere. The original of each is kept.\n\n` +
+          `Removing them isn't saved until you save the tournament.`
+      )
+    ) {
+      return;
+    }
+    detachFiles(duplicateIds);
+    // The note describes scores that were just taken off the form with the
+    // copies they were entered against.
+    setImportNote(null);
+  }
+
+  /**
+   * Clears every upload in one go — the escape hatch for a tournament that was
+   * pointed at the wrong JSONs (or had the whole day's set uploaded twice).
+   * Only the uploads and their scores go: the roster, renames and substitutes
+   * describe the tournament rather than the files, so they stay and apply
+   * again to whatever is uploaded next. Confirmed, and like every removal here
+   * it only takes effect when the form is saved.
+   */
+  function clearAllFiles() {
+    const count = files.length;
+    if (count === 0) return;
+    if (
+      !confirm(
+        `Remove all ${count} uploaded JSON${count === 1 ? '' : 's'}?\n\n` +
+          `Every score entered against them is dropped too. The teams, renames and ` +
+          `substitutes stay as they are.\n\n` +
+          `This isn't saved until you save the tournament.`
+      )
+    ) {
+      return;
+    }
+    detachFiles(files.map((f) => f.id));
+    setImportNote(null);
+    // Any question still queued was asked about one of the files that just
+    // went, so there is nothing left to ask it for.
+    setSubQuestions([]);
   }
 
   // A miss while dragging — a drop anywhere on the form that isn't a match
@@ -389,9 +547,15 @@ export default function MatchForm({
   // where the Clipboard API is blocked) and fills the bracket's score boxes
   // in one go. Rows are matched to the pasted roster by team — see
   // lib/import-results.ts for the parsing, matching and the occurrence rule
-  // that splits a twice-played pairing across its two fixtures. Nothing is
-  // written to the database: the fills land in the same score state the
-  // boxes edit, so they can still be typed over, cleared or discarded
+  // that splits a twice-played pairing across its two fixtures.
+  //
+  // Only fixtures that already have a JSON attached are filled: an import is a
+  // shortcut for games that were uploaded, so it never creates an "Untitled"
+  // placeholder to hang a score on. Rows aimed at a fixture with nothing
+  // attached are reported as skipped rather than quietly inventing a file.
+  //
+  // Nothing is written to the database: the fills land in the same score state
+  // the boxes edit, so they can still be typed over, cleared or discarded
   // without saving.
   async function importResultsFromClipboard() {
     setImportNote(null);
@@ -432,13 +596,45 @@ export default function MatchForm({
       return;
     }
 
+    // Only fixtures that already carry a JSON are filled. Import Results is a
+    // shortcut for *uploaded* games: it never invents an upload, so it can't
+    // leave a fixture's worth of "Untitled" placeholders behind in the JSON
+    // uploader — empty drafts that look like games, get saved with the
+    // tournament and count towards its games-played total while holding no
+    // data. A row aimed at a fixture with nothing attached is reported as
+    // skipped: attach the JSON and import again, or type the two boxes by
+    // hand — that path still creates a placeholder, deliberately.
+    const applicable = matched.applied.filter((a) => {
+      const file = assignment.bySlot[a.slot];
+      if (!file) return false;
+      // "Has a JSON attached" is tested on the parsed payload, not on the
+      // draft's text: a placeholder that was saved by an older build holds
+      // `{}`, which stringifies to a non-empty '{ }' and would otherwise read
+      // as an upload. `parsedDrafts` only holds drafts that parsed at all, and
+      // a real export always has keys.
+      const data = parsedDrafts.data[file.id];
+      return typeof data === 'object' && data !== null && Object.keys(data).length > 0;
+    });
+    const skipped = matched.applied.length - applicable.length;
+
+    if (applicable.length === 0) {
+      setImportNote(
+        `None of the ${rows.length} row${rows.length === 1 ? '' : 's'} matched a fixture with a ` +
+          `JSON attached — Import Results only fills games you've uploaded.` +
+          (matched.unknownTeamRows > 0
+            ? ` ${matched.unknownTeamRows} had team(s) not in this roster: ${quoteCells([...new Set(matched.unknownTeams)])}.`
+            : '')
+      );
+      return;
+    }
+
     // Replacing scores that are already typed needs a yes — an import writes
     // whole fixtures, and an accidental click could lose what was entered.
-    const occupied = matched.applied.filter((a) => {
+    const occupied = applicable.filter((a) => {
       const file = assignment.bySlot[a.slot];
       const m = matchupBySlot.get(a.slot);
       const existing = file ? scores[file.id] : undefined;
-      if (!file || !existing || !m) return false;
+      if (!existing || !m) return false;
       return (
         (existing[norm(m.labelA)] ?? '').trim() !== '' ||
         (existing[norm(m.labelB)] ?? '').trim() !== ''
@@ -447,32 +643,27 @@ export default function MatchForm({
     if (
       occupied > 0 &&
       !confirm(
-        `Import ${matched.applied.length} result${matched.applied.length === 1 ? '' : 's'} and overwrite the ${occupied} fixture${occupied === 1 ? '' : 's'} that already ${occupied === 1 ? 'has' : 'have'} scores?`
+        `Import ${applicable.length} result${applicable.length === 1 ? '' : 's'} and overwrite the ${occupied} fixture${occupied === 1 ? '' : 's'} that already ${occupied === 1 ? 'has' : 'have'} scores?`
       )
     ) {
       setImportNote('Import cancelled — nothing changed.');
       return;
     }
 
-    // One batched write: a placeholder file for each fixture that has no
-    // file yet (created all at once — no re-render happens between rows, so
-    // the per-keystroke path in setScoreForSlot can't be reused), then a
-    // single merged setScores carrying every fixture's pair.
-    const newFiles: FileDraft[] = [];
+    // One batched write: every applicable fixture already has a file to hold
+    // its scores, so a single merged setScores carries all of them and no draft
+    // is created.
     const patches: Record<string, Record<string, string>> = {};
-    for (const a of matched.applied) {
+    for (const a of applicable) {
       const m = matchupBySlot.get(a.slot);
-      if (!m) continue;
-      const file = assignment.bySlot[a.slot];
-      const fileId = file?.id ?? nanoid(6);
-      if (!file) newFiles.push({ id: fileId, label: '', text: '', error: null, slot: a.slot });
+      const fileId = assignment.bySlot[a.slot]?.id;
+      if (!m || !fileId) continue;
       patches[fileId] = {
         ...patches[fileId],
         [norm(m.labelA)]: String(a.scoreA),
         [norm(m.labelB)]: String(a.scoreB),
       };
     }
-    if (newFiles.length) setFiles((prev) => [...prev, ...newFiles]);
     setScores((prev) => {
       const next = { ...prev };
       for (const [fileId, patch] of Object.entries(patches)) {
@@ -483,8 +674,13 @@ export default function MatchForm({
 
     // Summary — what landed, and what was skipped and why.
     const parts = [
-      `Imported ${matched.applied.length} result${matched.applied.length === 1 ? '' : 's'}. Save the tournament to keep ${matched.applied.length === 1 ? 'it' : 'them'}.`,
+      `Imported ${applicable.length} result${applicable.length === 1 ? '' : 's'}. Save the tournament to keep ${applicable.length === 1 ? 'it' : 'them'}.`,
     ];
+    if (skipped > 0) {
+      parts.push(
+        `${skipped} result${skipped === 1 ? '' : 's'} had no JSON attached to that fixture and ${skipped === 1 ? 'was' : 'were'} skipped — attach the upload and import again.`
+      );
+    }
     if (matched.unknownTeamRows > 0) {
       parts.push(
         `${matched.unknownTeamRows} row${matched.unknownTeamRows === 1 ? '' : 's'} had team(s) not in this roster: ${quoteCells([...new Set(matched.unknownTeams)])}.`
@@ -623,6 +819,7 @@ export default function MatchForm({
       teams: parsedTeams,
       files: parsedFiles,
       renames,
+      substitutes,
       playerRanks: parsedPlayerRanks,
     };
     // withBasePath: the request carries the whole tournament (raw exports and
@@ -852,7 +1049,7 @@ export default function MatchForm({
                   falls back to a paste prompt where that's blocked. */}
               <button
                 type="button"
-                title="Fill the score boxes from a results table in the clipboard (Team 1, Score 1, Team 2, Score 2)"
+                title="Fill the score boxes of already-uploaded games from a results table in the clipboard (Team 1, Score 1, Team 2, Score 2); fixtures with no JSON attached are skipped"
                 onClick={importResultsFromClipboard}
                 className="rounded-md border border-border px-2 py-1 text-[0.65rem] text-textSub transition-colors hover:border-textSub hover:text-text"
               >
@@ -884,6 +1081,21 @@ export default function MatchForm({
                   here, so this is the way to get them back out, zipped up under
                   the tournament's own name. */}
               <DownloadFilesButton files={files} archiveName={previewTitle || name} />
+              {/* Bulk removal: the wrong day of exports pointed at this
+                  tournament, or the same set uploaded twice over. One confirmed
+                  action detaches every file and the scores entered against
+                  them; the roster, renames and substitutes stay. Only shown
+                  when there is something to clear. */}
+              {files.length > 0 && (
+                <button
+                  type="button"
+                  title="Detach every uploaded JSON and the scores entered against them (the roster and name fixes stay)"
+                  onClick={clearAllFiles}
+                  className="rounded-md border border-border px-2 py-1 text-[0.65rem] text-textSub transition-colors hover:border-taken hover:text-taken"
+                >
+                  Clear all JSONs
+                </button>
+              )}
             </div>
           </div>
           {/* What the last Import Results did — placed under the toolbar so
@@ -1055,23 +1267,53 @@ export default function MatchForm({
           <p className="text-xs text-accent">
             {unmatchedNames.length} name{unmatchedNames.length !== 1 ? 's' : ''} across your
             uploaded file{files.length !== 1 ? 's' : ''} don't match anyone in the pasted teams
-            — rename to match, or leave as-is. You can change these any time.
+            — rename to a roster player, mark them as a substitute standing in for one, or
+            leave as-is. You can change these any time.
           </p>
           {unmatchedNames.map(([key, rawName]) => (
             <div key={key} className="flex items-center gap-2">
               <span className="flex-shrink-0 font-mono text-xs text-textSub">{rawName}</span>
               <span className="flex-shrink-0 text-xs text-textDim">→</span>
+              {/* One select, both answers: the two readings of an odd name are
+                  mutually exclusive, so the chosen option encodes which map it
+                  writes to (see setRename / setSubstitute). A substitute counts
+                  as part of the replaced player's team but keeps its own
+                  identity — a rename merges the two into one player. */}
               <select
-                value={renames[key] ?? ''}
-                onChange={(e) => setRename(key, e.target.value)}
+                value={
+                  substitutes[key] !== undefined
+                    ? `sub:${substitutes[key]}`
+                    : renames[key] !== undefined
+                      ? `rename:${renames[key]}`
+                      : ''
+                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.startsWith('sub:')) setSubstitute(key, value.slice('sub:'.length));
+                  else if (value.startsWith('rename:'))
+                    setRename(key, value.slice('rename:'.length));
+                  else {
+                    setRename(key, '');
+                    setSubstitute(key, '');
+                  }
+                }}
                 className="flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-textSub"
               >
                 <option value="">Leave as "{rawName}"</option>
-                {rosterNames.map((rn) => (
-                  <option key={rn} value={rn}>
-                    Rename to {rn}
-                  </option>
-                ))}
+                <optgroup label="Same player, renamed">
+                  {rosterNames.map((rn) => (
+                    <option key={`r:${rn}`} value={`rename:${rn}`}>
+                      Rename to {rn}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Substituting for">
+                  {rosterNames.map((rn) => (
+                    <option key={`s:${rn}`} value={`sub:${rn}`}>
+                      Substitute for {rn}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           ))}
@@ -1080,14 +1322,27 @@ export default function MatchForm({
 
       {duplicateGroups.length > 0 && (
         <div className="space-y-2 rounded-md border border-taken/30 bg-taken/5 p-3">
-          <p className="text-xs text-taken">
-            {duplicateIds.size} of your uploads{' '}
-            {duplicateIds.size === 1 ? 'is an exact copy' : 'are exact copies'} of another file
-            already attached — same game, same data. Each one would count that game twice in
-            every player&apos;s stats and in the tournament&apos;s games-played count, and would
-            fill the other fixture of that pair as if it were the rematch. Remove{' '}
-            {duplicateIds.size === 1 ? 'the copy' : 'the copies'} before saving.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="text-xs text-taken">
+              {duplicateIds.size} of your uploads{' '}
+              {duplicateIds.size === 1 ? 'is an exact copy' : 'are exact copies'} of another file
+              already attached — same game, same data. Each one would count that game twice in
+              every player&apos;s stats and in the tournament&apos;s games-played count, and would
+              fill the other fixture of that pair as if it were the rematch. Remove{' '}
+              {duplicateIds.size === 1 ? 'the copy' : 'the copies'} before saving.
+            </p>
+            {/* The panel below lists every copy with its own Remove button;
+                this is the same action for all of them, in one confirmation
+                (the originals are kept — see duplicateGroups). */}
+            <button
+              type="button"
+              onClick={removeDuplicateFiles}
+              title="Remove every exact copy listed below; the original of each is kept"
+              className="flex-shrink-0 rounded-md border border-taken/40 px-2 py-1 text-[0.65rem] font-medium text-taken transition-colors hover:bg-taken/10"
+            >
+              Remove all {duplicateIds.size} cop{duplicateIds.size === 1 ? 'y' : 'ies'}
+            </button>
+          </div>
           {duplicateGroups.map((g) => (
             <div key={g.original.id} className="space-y-1.5">
               {g.copies.map((c) => (
@@ -1138,6 +1393,22 @@ export default function MatchForm({
 
       {formError && <p className="text-sm text-taken">{formError}</p>}
 
+      {/* The substitute-or-rename ask for the latest uploads: an export that
+          is *almost* the pasted roster leaves 1-2 names the roster doesn't
+          know, and whether those are subs or renames changes what the stats
+          mean — so the admin answers before the form does anything with them.
+          One dialog at a time (the queue's head); the same choice stays
+          editable afterwards in the unmatched-names panel above. */}
+      {subQuestions.length > 0 && (
+        <SubQuestionDialog
+          key={subQuestions[0].key}
+          question={subQuestions[0]}
+          rosterNames={rosterNames}
+          onAnswer={(kind, target) => answerSubQuestion(kind, target)}
+          onSkip={() => answerSubQuestion('later', '')}
+        />
+      )}
+
       <button
         type="submit"
         disabled={submitting}
@@ -1146,6 +1417,94 @@ export default function MatchForm({
         {submitting ? 'Saving…' : existing ? 'Save changes' : 'Create match'}
       </button>
     </form>
+  );
+}
+
+/**
+ * The "substitute or rename?" ask, shown when an upload's roster *almost*
+ * matches the pasted one (see detectSubstituteQuestions in lib/substitutes).
+ *
+ * The two answers are genuinely different statements about the world — a
+ * substitute is another person who filled a slot (their stats stay their
+ * own, they only count as part of that player's team), a rename is the same
+ * person under a new username (the two histories merge) — so neither is
+ * assumed. The suggested player, when the evidence names exactly one (the
+ * open slot on the team the matched names point at), is preselected to make
+ * the common case one click; "Decide later" defers to the unmatched-names
+ * panel without re-asking this session.
+ *
+ * Lives inside the admin form, so every button is explicitly type="button"
+ * — a default-type button here would submit the form.
+ */
+function SubQuestionDialog({
+  question,
+  rosterNames,
+  onAnswer,
+  onSkip,
+}: {
+  question: SubstituteQuestion & { fileLabel: string };
+  rosterNames: string[];
+  onAnswer: (kind: 'sub' | 'rename', target: string) => void;
+  onSkip: () => void;
+}) {
+  const [target, setTarget] = useState(question.suggest ?? '');
+  const ready = target !== '';
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Possible substitute: ${question.rawName}`}
+    >
+      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-text">
+          Is &quot;{question.rawName}&quot; a substitute?
+        </h2>
+        <p className="mt-2 text-xs leading-relaxed text-textSub">
+          <span className="font-mono">{exportDisplayLabel(question.fileLabel)}</span> has{' '}
+          {question.matched} of {question.total} players from this roster — only &quot;
+          {question.rawName}&quot; differs. Is that a player substituting for someone, or the
+          same player under a new name?
+        </p>
+        <select
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          className="mt-3 w-full rounded-md border border-border bg-surfaceAlt px-2 py-1.5 text-xs outline-none focus:border-textSub"
+        >
+          <option value="">Choose a roster player…</option>
+          {rosterNames.map((rn) => (
+            <option key={rn} value={rn}>
+              {rn}
+            </option>
+          ))}
+        </select>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => onAnswer('sub', target)}
+            className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-bg disabled:opacity-40"
+          >
+            Substitute for them
+          </button>
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => onAnswer('rename', target)}
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-textSub hover:border-textSub hover:text-text disabled:opacity-40"
+          >
+            Same player, renamed
+          </button>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="ml-auto text-xs text-textMuted underline hover:text-textSub"
+          >
+            Decide later
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

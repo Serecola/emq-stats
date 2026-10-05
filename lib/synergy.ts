@@ -33,10 +33,11 @@ import type { Match } from './types';
  * is therefore two chances, not one — which keeps pooled percentages on the
  * same 0–100 scale the Guess Rate table already uses.
  *
- * Only rostered players count. A name in the export that isn't on any team is
- * skipped entirely: without a team there is no way to tell whether the two of
- * them were allies or opponents that game, and guessing would silently skew
- * both buckets.
+ * Only rostered players count — plus declared substitutes, who inherit the
+ * team of the player they stood in for (see Match.substitutes). A name in
+ * the export that matches neither is skipped entirely: without a team there
+ * is no way to tell whether the two of them were allies or opponents that
+ * game, and guessing would silently skew both buckets.
  */
 export interface SynergyRead {
   /** songs that were on the list being read, asked while the reader was present */
@@ -56,7 +57,8 @@ export interface SynergyMember {
   vsEnemy: SynergyRead;
   readByAlly: SynergyRead;
   readByEnemy: SynergyRead;
-  /** vsAlly split per individual teammate, in roster order. */
+  /** vsAlly split per individual teammate: the roster in order, then any
+   * substitute who filled a slot on this team in a game with data. */
   allyPartners: { uname: string; read: SynergyRead }[];
   /** vsEnemy split per opposing team they actually met on list-bearing songs. */
   enemyTeams: { teamIndex: number; read: SynergyRead }[];
@@ -103,6 +105,10 @@ interface Cell {
  * UI puts under the pooled numbers.
  */
 interface MemberAccum {
+  /** The accum's map key (normalized username) — what every key-based
+   * lookup (self-exclusion in the per-teammate split) compares against,
+   * since a sub's displayed casing comes from the export, not the key. */
+  key: string;
   uname: string;
   teamIndex: number;
   songs: number;
@@ -118,8 +124,9 @@ function emptyCell(): Cell {
   return { chances: 0, hits: 0 };
 }
 
-function emptyAccum(uname: string, teamIndex: number): MemberAccum {
+function emptyAccum(key: string, uname: string, teamIndex: number): MemberAccum {
   return {
+    key,
     uname,
     teamIndex,
     songs: 0,
@@ -212,7 +219,10 @@ export function readAnswers(pd: any, isErumode: boolean): SongAnswers | null {
  * with the round/game selector along with the rest of the Stats section.
  */
 export function computeSynergyStats(
-  match: Pick<Match, 'teams' | 'files' | 'mode'> & { renames?: Record<string, string> }
+  match: Pick<Match, 'teams' | 'files' | 'mode'> & {
+    renames?: Record<string, string>;
+    substitutes?: Record<string, string>;
+  }
 ): SynergyStats {
   const isErumode = match.mode === 'Erumode';
   const renames = match.renames ?? {};
@@ -225,18 +235,41 @@ export function computeSynergyStats(
     for (const uname of team) roster.set(norm(uname), { uname, teamIndex });
   });
 
+  // Substitutes ride along as members of the team they filled a slot on —
+  // their reads are part of that team's ally/enemy pools, and skipping them
+  // would silently drop chances for everyone who shared the room with them.
+  // Unlike the roster they are NOT seeded: a sub only joins the view if they
+  // actually appear, and their displayed casing comes from the export itself
+  // (first appearance wins — see accumFor below). Entries whose replaced
+  // player isn't on the roster are unreconciled, not substitutes, and are
+  // left to the admin form's unmatched-names panel like any other unknown.
+  const subs = new Map<string, { uname: string; teamIndex: number }>();
+  for (const [subKey, target] of Object.entries(match.substitutes ?? {})) {
+    const key = norm(subKey);
+    if (roster.has(key)) continue; // a roster player is never their own sub
+    const replaced = roster.get(norm(target));
+    if (!replaced) continue;
+    subs.set(key, { uname: key, teamIndex: replaced.teamIndex });
+  }
+
   const acc = new Map<string, MemberAccum>();
-  const accumFor = (key: string): MemberAccum | undefined => {
+  const accumFor = (key: string, display?: string): MemberAccum | undefined => {
     const existing = acc.get(key);
     if (existing) return existing;
-    const member = roster.get(key);
+    const member = roster.get(key) ?? subs.get(key);
     if (!member) return undefined;
-    const created = emptyAccum(member.uname, member.teamIndex);
+    // Roster casing wins for rostered players; a sub is displayed under the
+    // name the export actually used. `display` only ever reaches this on
+    // creation, so the first appearance is the one that sticks.
+    const uname = roster.has(key) ? member.uname : (display ?? member.uname);
+    const created = emptyAccum(key, uname, member.teamIndex);
     acc.set(key, created);
     return created;
   };
   // Seed the whole roster so a member who never played still appears, with
   // zeroes — the same treatment computeMatchStats gives an absent player.
+  // Subs are deliberately left out of this: they exist only in games they
+  // played in.
   for (const key of roster.keys()) accumFor(key);
 
   let totalSongs = 0;
@@ -257,7 +290,7 @@ export function computeSynergyStats(
         const answers = readAnswers(pd, isErumode);
         if (!answers) continue;
         const key = norm(resolve(answers.username));
-        const member = accumFor(key);
+        const member = accumFor(key, answers.username);
         if (!member) continue; // not on any roster — no team, so no ally/enemy split
         member.songs++;
         present.push({ key, teamIndex: member.teamIndex, answers: answers.byType, acc: member });
@@ -288,7 +321,24 @@ export function computeSynergyStats(
     }
   }
 
-const finalize = (a: MemberAccum): SynergyMember => ({
+  /**
+   * Everyone on one side of the room, as accum keys: the roster in order,
+   * then any sub who filled a slot on that team and actually appears in the
+   * data. Used for the per-teammate split, so a sub shows up as a partner
+   * of the teammates they actually played with — and their own row lists
+   * those same teammates back — rather than being missing from the split
+   * their plays were counted in. Roster members are listed whether or not
+   * they played, exactly as before this map existed.
+   */
+  const sideKeys = (teamIndex: number): string[] => {
+    const keys = match.teams[teamIndex].map(norm);
+    for (const [key, m] of subs) {
+      if (m.teamIndex === teamIndex && acc.has(key)) keys.push(key);
+    }
+    return keys;
+  };
+
+  const finalize = (a: MemberAccum): SynergyMember => ({
     uname: a.uname,
     teamIndex: a.teamIndex,
     songs: a.songs,
@@ -296,11 +346,11 @@ const finalize = (a: MemberAccum): SynergyMember => ({
     vsEnemy: asRead(a.enemy),
     readByAlly: asRead(a.readAlly),
     readByEnemy: asRead(a.readEnemy),
-    allyPartners: match.teams[a.teamIndex]
-      .filter((u) => norm(u) !== norm(a.uname))
-      .map((uname) => ({
-        uname,
-        read: asRead(a.allyPartners.get(norm(uname)) ?? emptyCell()),
+    allyPartners: sideKeys(a.teamIndex)
+      .filter((key) => key !== a.key)
+      .map((key) => ({
+        uname: acc.get(key)?.uname ?? key,
+        read: asRead(a.allyPartners.get(key) ?? emptyCell()),
       })),
     enemyTeams: match.teams
       .map((_, teamIndex) => teamIndex)
@@ -310,6 +360,15 @@ const finalize = (a: MemberAccum): SynergyMember => ({
 
   const teams: SynergyTeam[] = match.teams.map((team, teamIndex) => {
     const members = team.map((uname) => finalize(acc.get(norm(uname))!));
+    // Subs who filled in for this team join as extra rows, so their reads
+    // land in the team's pooled numbers too. Only subs with an accum are
+    // listed — i.e. ones who actually appeared in a game; the roster's seed
+    // loop above deliberately doesn't reach them.
+    for (const [key, m] of subs) {
+      if (m.teamIndex !== teamIndex) continue;
+      const subAcc = acc.get(key);
+      if (subAcc) members.push(finalize(subAcc));
+    }
 
     /**
      * Sums a member-level read across the whole roster, so a team number is an

@@ -1,4 +1,4 @@
-import { fileRosterMembers, norm } from './stats';
+import { fileParticipants, fileRosterMembers, norm } from './stats';
 import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match, MatchFile, Team } from './types';
 
@@ -197,6 +197,14 @@ export interface PlayerGameRecord {
  *
  * Global aliases ride the same name-resolution path the per-match renames
  * already use, so a merged identity is tallied as one player.
+ *
+ * Substitutes are credited too, under their *own* name: they were in the
+ * room and the game's result is theirs to carry, while the roster player
+ * they stood in for is (correctly) not present and therefore claims
+ * nothing — exactly the "per player, not per team" rule above, applied to
+ * the slot being filled by someone else. A substitute whose key is itself a
+ * roster member (a mis-recorded entry) skips this branch, since the roster
+ * loop above already credited them for the team they actually played on.
  */
 export function computePlayerGameRecords(
   matches: Match[],
@@ -206,25 +214,45 @@ export function computePlayerGameRecords(
 
   for (const match of matches) {
     const renames = withAliases(match.renames, aliases);
+    const substitutes = match.substitutes ?? {};
+    const subEntries = Object.entries(substitutes);
     for (const file of match.files) {
       const result = computeGameResult(file, match.teams);
       if (!result) continue;
       const present = fileRosterMembers(file, match.teams, renames);
+      // Who was in the room at all — the only way to see a sub, who is by
+      // definition not a roster key.
+      const inRoom = subEntries.length > 0 ? fileParticipants(file, renames) : null;
+
+      const credit = (key: string, teamIndex: number) => {
+        const perMatch = (records[key] ??= {});
+        const record = (perMatch[match.id] ??= { wins: 0, ties: 0, losses: 0, games: 0 });
+        const outcome: keyof Omit<PlayerGameRecord, 'games'> = result.isTie
+          ? 'ties'
+          : result.entries.find((e) => e.teamIndex === teamIndex)?.isWinner
+            ? 'wins'
+            : 'losses';
+        record[outcome]++;
+        record.games++;
+      };
+
       for (const entry of result.entries) {
         // One outcome per team in the game, credited to each of its members who
         // was actually in that game.
-        const outcome: keyof Omit<PlayerGameRecord, 'games'> = result.isTie
-          ? 'ties'
-          : entry.isWinner
-            ? 'wins'
-            : 'losses';
         for (const name of match.teams[entry.teamIndex]) {
           const key = norm(name);
           if (!present.has(key)) continue;
-          const perMatch = (records[key] ??= {});
-          const record = (perMatch[match.id] ??= { wins: 0, ties: 0, losses: 0, games: 0 });
-          record[outcome]++;
-          record.games++;
+          credit(key, entry.teamIndex);
+        }
+        // Plus whoever filled in for one of its players, if they were in the
+        // room for this game.
+        if (inRoom) {
+          const teamKeys = match.teams[entry.teamIndex].map(norm);
+          for (const [subKey, target] of subEntries) {
+            if (!teamKeys.includes(norm(target))) continue;
+            if (present.has(subKey) || !inRoom.has(subKey)) continue;
+            credit(subKey, entry.teamIndex);
+          }
         }
       }
     }

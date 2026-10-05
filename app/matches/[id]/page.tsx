@@ -88,7 +88,7 @@ export default async function MatchPage({
   // and RoundRobinGrid is a client component: whatever it receives is
   // serialized into the page. It only renders scores, so only scores (and
   // labels) are handed over, keeping ~2 MB of raw exports out of the payload.
-  const assignment = matchFilesToBracket(match.teams, match.files, match.renames);
+  const assignment = matchFilesToBracket(match.teams, match.files, match.renames, match.substitutes);
   const bracketFiles = summarizeBracketFiles(assignment);
 
   // Stats scope from the round/game selector (see MatchStatsScope + the game
@@ -100,7 +100,13 @@ export default async function MatchPage({
   // post-filtered rows. Only files placed on the bracket participate; slot-
   // less uploads count towards the full view only.
   const scope: StatsScope = parseStatsScope(searchParams, assignment);
-  const scopedFiles = filesInStatsScope(match.teams, match.files, match.renames, scope);
+  const scopedFiles = filesInStatsScope(
+    match.teams,
+    match.files,
+    match.renames,
+    scope,
+    match.substitutes
+  );
   const scopedMatch = { ...match, files: scopedFiles };
   const scopedLabel = scopeLabel(scope, match.teams);
 

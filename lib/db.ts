@@ -30,6 +30,11 @@ const MATCH_COLUMN_MIGRATIONS: [column: string, statement: string][] = [
   ['submode', "ALTER TABLE matches ADD COLUMN submode TEXT NOT NULL DEFAULT ''"],
   ['format', "ALTER TABLE matches ADD COLUMN format TEXT NOT NULL DEFAULT 'RoundRobin'"],
   ['renames', "ALTER TABLE matches ADD COLUMN renames TEXT NOT NULL DEFAULT '{}'"],
+  // Substitute counterparts to `renames`: norm(JSON name) -> norm(roster
+  // player they stood in for). Same read-side rule as every column above —
+  // a missing column on an old database is added here, existing rows then
+  // read as '{}' (no substitutes) with nothing to migrate.
+  ['substitutes', "ALTER TABLE matches ADD COLUMN substitutes TEXT NOT NULL DEFAULT '{}'"],
   ['player_ranks', "ALTER TABLE matches ADD COLUMN player_ranks TEXT NOT NULL DEFAULT '{}'"],
   // Counted once at write time so list views can show "3 files" without
   // reading (and parsing) the `files` payload they don't render.
@@ -69,6 +74,7 @@ export function ensureSchema(): Promise<void> {
           teams TEXT NOT NULL,
           files TEXT NOT NULL,
           renames TEXT NOT NULL DEFAULT '{}',
+          substitutes TEXT NOT NULL DEFAULT '{}',
           player_ranks TEXT NOT NULL DEFAULT '{}',
           file_count INTEGER NOT NULL DEFAULT 0,
           exclude_from_stats INTEGER NOT NULL DEFAULT 0

@@ -12,6 +12,8 @@ import {
   playerFilterQuery,
 } from '@/lib/tournament-search';
 import { canonicalAliases } from '@/lib/player-aliases';
+import { paginate, parsePage } from '@/lib/pagination';
+import PaginationNav from '@/components/PaginationNav';
 import { teamColor, teamColorBg } from '@/lib/team-colors';
 import { weekRangeLabel, weekStart } from '@/lib/week';
 
@@ -28,10 +30,19 @@ const TEAM_CHIP_ALPHA = 0.18;
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { mode?: string; submode?: string; with?: string; without?: string; q?: string; add?: string };
+  searchParams: {
+    mode?: string;
+    submode?: string;
+    with?: string;
+    without?: string;
+    q?: string;
+    add?: string;
+    page?: string;
+  };
 }) {
   const filter = parseMatchFilter(searchParams);
   const playerFilter = parsePlayerFilter(searchParams);
+  const page = parsePage(searchParams);
 
   const allMatches = await listMatchSummaries();
   // Fold the global aliases in before anything reads a name, so a player
@@ -42,6 +53,11 @@ export default async function HomePage({
   // which of those they were in.
   const matches = applyPlayerFilter(applyMatchFilter(allMatches, filter), playerFilter, aliases);
   const [current, ...past] = matches;
+  // Only the past list is paginated — Current is a single card and the newest
+  // tournament has to stay on screen whatever page is open. The slice is taken
+  // after both filters, so `?page=` composes with them instead of paging a
+  // list that is then narrowed (see pageHref, which keeps them in the link).
+  const pastPage = paginate(past, page);
   const filterLabel = matchFilterLabel(filter);
   // Suggestions come from the roster of *all* tournaments, not the mode-
   // filtered ones, so a player who only ever played NGMC can still be found
@@ -86,18 +102,25 @@ export default async function HomePage({
             </section>
           )}
           {past.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-textMuted">Past tournaments</h2>
+            <section className="space-y-3">
+              {/* Page nav above the heading: this is the long list, so the way
+                  through it belongs at its top edge — and above the heading
+                  rather than buried under 10 cards. */}
+              <PaginationNav basePath="/" searchParams={searchParams} page={pastPage} />
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">
+                Past tournaments
+              </h2>
               <div className="space-y-2">
-                {past.map((m, i) => {
+                {pastPage.items.map((m, i) => {
                   // Same week grouping as the Tour Manager (see
                   // app/admin/page.tsx): tournaments come back ordered by
                   // their own date, so every tour of a given week is already
-                  // contiguous. The row above lives in `matches` at offset
-                  // i — past[0]'s predecessor is the Current card — so a
-                  // divider appears wherever the week changes, including
-                  // between Current and the first past tour.
-                  const prev = matches[i];
+                  // contiguous. The row above is looked up in the *whole*
+                  // filtered list — one for the Current card, plus this page's
+                  // offset — rather than among the rendered rows, so a divider
+                  // still appears wherever the week changes, including at the
+                  // top of a later page where the row above isn't on screen.
+                  const prev = matches[pastPage.offset + i];
                   const newWeek = weekStart(prev.date) !== weekStart(m.date);
                   return (
                     <Fragment key={m.id}>

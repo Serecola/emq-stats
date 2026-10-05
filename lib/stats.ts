@@ -135,10 +135,14 @@ function emptyPlayer(uname: string): PlayerStats {
  * routes) or the client (e.g. a live admin preview) identically.
  */
 export function computeMatchStats(
-  match: Pick<Match, 'teams' | 'files'> & { renames?: Record<string, string> }
+  match: Pick<Match, 'teams' | 'files'> & {
+    renames?: Record<string, string>;
+    substitutes?: Record<string, string>;
+  }
 ): MatchStats {
   const teams: Team[] = match.teams;
   const renames = match.renames ?? {};
+  const substitutes = match.substitutes ?? {};
   // Resolves a raw JSON username to the name it should be treated as for
   // every purpose below — team lookup, stat bucketing, attendance — without
   // ever touching the underlying file data. `renames` is keyed by
@@ -146,7 +150,24 @@ export function computeMatchStats(
   const resolve = (rawUsername: string): string => renames[norm(rawUsername)] || rawUsername;
 
   const normTeams = teams.map((t) => t.map(norm));
-  const teamOf = (u: string) => normTeams.findIndex((t) => t.includes(u));
+  const rosterTeamIndex = (u: string) => normTeams.findIndex((t) => t.includes(u));
+
+  // Substitutes inherit the *team* of the roster player they stood in for —
+  // never their identity: `teamOf` is what ties a correct/blocked guess to a
+  // side of the room, so without this a sub's plays would read as a teamless
+  // third player and skew every attack/block bucket. The sub's own stats row
+  // stays under the sub's own name; only the team lookup falls through to the
+  // replaced player. Roster lookup wins first, so a mis-keyed substitute
+  // entry can never pull a real roster member onto another team.
+  const subTeamIndex = new Map<string, number>();
+  for (const [subKey, target] of Object.entries(substitutes)) {
+    const ti = rosterTeamIndex(norm(target));
+    if (ti !== -1) subTeamIndex.set(norm(subKey), ti);
+  }
+  const teamOf = (u: string): number => {
+    const direct = rosterTeamIndex(u);
+    return direct !== -1 ? direct : (subTeamIndex.get(u) ?? -1);
+  };
 
   const stats: Record<string, PlayerStats> = {};
   const init = (u: string) => {
@@ -230,8 +251,22 @@ export function computeMatchStats(
     }
   }
 
+  const rosterKeys = new Set<string>();
+  for (const team of teams) for (const name of team) rosterKeys.add(norm(name));
+
   const teamStats: TeamStats[] = teams.map((team, ti) => {
     const members = team.map((u) => stats[norm(u)] ?? emptyPlayer(u));
+    // Subs who filled a slot on this team ride along as extra rows: their
+    // attacks/blocks belong in this team's numbers (and in the aggregates
+    // built from them — see computeAllPlayerStats' attackMap), while
+    // `present`/`missing` stay roster-only so the replaced player still
+    // reads as the one who was absent. A roster member is never added here —
+    // they're already a member of their own team.
+    for (const [subKey, subTi] of subTeamIndex) {
+      if (subTi !== ti || rosterKeys.has(subKey)) continue;
+      const row = stats[subKey];
+      if (row) members.push(row);
+    }
     const present = team.filter((u) => (seenBy[norm(u)]?.size ?? 0) > 0);
     const missing = team.filter((u) => !(seenBy[norm(u)]?.size ?? 0));
     const sum = (key: 'taken' | 'blocked' | 'effTaken' | 'effBlocked') =>
@@ -303,6 +338,26 @@ export function fileRosterMembers(
   for (const username of extractUsernames(file.data)) {
     const key = norm(renames[norm(username)] || username);
     if (roster.has(key)) present.add(key);
+  }
+  return present;
+}
+
+/**
+ * Every normalized username inside one raw export, renames applied — roster
+ * members *and* anything else in the room.
+ *
+ * `fileRosterMembers` answers "which roster slots were filled"; this answers
+ * "who was in the room at all", which is what crediting a substitute's own
+ * games needs (lib/results.ts): a sub isn't on the roster, so roster-keyed
+ * presence can never see them.
+ */
+export function fileParticipants(
+  file: Pick<MatchFile, 'data'>,
+  renames: Record<string, string> = {}
+): Set<string> {
+  const present = new Set<string>();
+  for (const username of extractUsernames(file.data)) {
+    present.add(norm(renames[norm(username)] || username));
   }
   return present;
 }

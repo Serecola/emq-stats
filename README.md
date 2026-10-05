@@ -283,8 +283,8 @@ emq-stats-export-2026-09-30.zip
   slot, and the teams in its JSON don't map onto one fixture) falls back to the
   game's own export name, which carries the play timestamp.
 - `manifest.json` is the half a pile of exports can't give you: the roster, the
-  entered scores, the renames, the per-player ranks, the slot assignments and the
-  archive version, which is everything a restore needs.
+  entered scores, the renames, the substitutes, the per-player ranks, the slot
+  assignments and the archive version, which is everything a restore needs.
 
 The exports are re-serialised from the parsed JSON the app holds
 (`JSON.stringify(data, null, 2)`), so they are the same data in tidier formatting
@@ -330,6 +330,21 @@ The roster is the source, not the uploaded files: it's what the summary read
 returns (no multi-megabyte payloads) and what an admin edits when fixing a
 tournament. A player who played but isn't in the pasted roster isn't matched
 here — the admin form surfaces those separately as unmatched names.
+
+Both tournament lists — the public home page and the Tour Manager — show 10 past
+tournaments at a time, newest first, with the page navigation sitting above the
+**Past tournaments** heading (`components/PaginationNav.tsx`, over
+`lib/pagination.ts`). `?page=` is the whole mechanism, so a page is bookmarkable
+and shareable and works without client JS, and paging keeps whatever mode and
+player filter is active — `pageHref` rebuilds the current query and swaps only
+the page number, while changing a filter drops `page=` and lands back on page 1
+of the newly filtered list. A page number past the end clamps to the last page
+instead of rendering an empty list, and the nav disappears altogether when
+everything fits on one page. The Current card is never paginated: the newest
+tournament stays on screen whichever page is open. The week dividers compare
+against the whole filtered list rather than the rows actually rendered, so a
+week still opens its band at the top of a later page even though the tournament
+above it is on the previous one.
 
 ### Recent (5) vs All-Time
 
@@ -742,6 +757,64 @@ reconcile the same person across every tournament. A match's renames win where
 the two disagree — they're the more specific statement, made against that
 match's raw JSON.
 
+### Substitutes
+
+A game rooms six players, so an upload that shares only 4–5 of those names with
+the pasted roster and has 1–2 names changed isn't random: either the roster
+player is playing under a new username (**rename** — the two histories merge),
+or a different person took their slot for that game (**substitute** — the
+substitute keeps their own stats and only counts as part of that player's
+team). Those answers move the numbers in opposite directions, so the form asks
+instead of guessing: `detectSubstituteQuestions` in `lib/substitutes.ts` spots
+the pattern on upload and one dialog per changed name asks which it is,
+preselecting the replaced player whenever the team it belongs to has exactly
+one open slot.
+
+The answer is stored per match in `substitutes` (`norm(name from JSON) ->
+norm(roster player)`, a column next to `renames`, so it survives edits and
+travels in the export archive) and can be changed any time from the same
+unmatched-names panel that already handled renames — its select now offers
+*Rename to …* and *Substitute for …* for every name an upload contains that the
+pasted roster doesn't know.
+
+What a substitute changes downstream:
+
+- **Team attribution** — `computeMatchStats` falls back to the replaced
+  player's team when a name matches no roster, so their correct/attack/block
+  guesses land on the right side of the room (and their stats row joins that
+  team's rows); the replaced player still reads as **absent**, since they
+  weren't there.
+- **Identity** — never merged. The sub aggregates as themselves everywhere
+  else (Guess Rate, player pages, Expected Rank), and takes their own win/loss
+  tally for the games they played (`computePlayerGameRecords`).
+- **Fixture placement** — `fileParticipantIndices` counts a sub as presence for
+  the replaced player's team, so an upload whose team only shows through the
+  substitute still resolves to its two teams (and therefore its bracket slot).
+- **Synergy** — `computeSynergyStats` and `computePlayerSynergy` treat a sub as
+  a member of that team, so the chances that existed for everyone who shared
+  the room with them aren't silently dropped.
+
+### Removing uploads
+
+Every upload is removable three ways, all of them confirmed and all of them
+only taking effect when the tournament is saved (a removal never touches the
+stored record on its own):
+
+- **Remove** on a bracket card, on a duplicate's line, or on an unmatched
+  file — one upload, with any scores entered against it.
+- **Remove all N copies** in the duplicates panel — the same action for every
+  exact copy it lists, in one confirmation. The first copy of each group is
+  kept, so this can never delete a group whole or promote a copy into the
+  original's place. The panel exists because a duplicate is the one upload
+  error that can't be saved: the same game attached twice is counted twice in
+  every aggregate, and `matchFilesToBracket` files the copy as the pair's
+  rematch.
+- **Clear all JSONs** next to *Batch upload JSONs* — detaches every upload in
+  one go, for the tournament that was pointed at the wrong day's exports (or
+  had the whole set uploaded twice). Only the files and their scores go; the
+  teams, renames and substitutes describe the tournament rather than the
+  uploads, so they stay and apply again to whatever is uploaded next.
+
 ## Entering game scores
 
 The admin form's bracket takes a score per fixture, per team — a game's two
@@ -772,9 +845,9 @@ file with no score at all stays unplayed (nothing invents a `0–0`), and a
 file that can't be pinned to one fixture — no slot, and its raw JSON names no
 two roster teams — is left exactly as entered.
 
-**Import Results** (above the bracket) fills every fixture's score boxes from
-a clipboard table in the same shape the roster is pasted in: one game per
-line, tab-separated — `Team 1  Score 1  Team 2  Score 2`, optionally under
+**Import Results** (above the bracket) fills the score boxes of already-uploaded
+games from a clipboard table in the same shape the roster is pasted in: one game
+per line, tab-separated — `Team 1  Score 1  Team 2  Score 2`, optionally under
 that header. Team cells are matched to the current roster with their `(rank)`
 annotations stripped; for a pairing that plays twice (the 4-team double
 round robin) the first row for that pair fills its first fixture in bracket
@@ -782,6 +855,15 @@ order and the second row the rematch. Scores already entered are only
 replaced after a confirmation, and nothing is persisted until the tournament
 is saved — the import just types into the same boxes. Where the browser
 blocks reading the clipboard, the button falls back to a paste prompt.
+
+The import only fills fixtures that **already have a JSON attached**, and never
+creates an "Untitled" placeholder to hang a score on: an import is a shortcut
+for games that were uploaded, and an empty placeholder would look like a game
+in the uploader, be saved with the tournament, and count towards its
+games-played total while holding no data. A row aimed at a fixture with
+nothing attached is reported as skipped — attach the JSON and import again, or
+type the two boxes by hand, which is the one path that still creates a
+placeholder on purpose.
 
 ## How stats are computed
 

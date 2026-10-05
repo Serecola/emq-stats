@@ -70,6 +70,16 @@ export interface Match {
   // stays visible and editable in the admin form on every future edit,
   // instead of disappearing once applied.
   renames: Record<string, string>;
+  // Substitute reconciliation: norm(name from JSON) -> norm(roster player
+  // they stood in for). The counterpart to `renames`, chosen when the odd
+  // name out in an upload is a *different person* filling a roster slot
+  // rather than the roster player under a new name — see
+  // lib/substitutes.ts. A sub keeps its own identity in every aggregate
+  // (its stats are never merged into the replaced player's), but counts as
+  // part of the replaced player's team for fixture placement, attack
+  // attribution and synergy. Same rules as `renames`: its own field, keyed
+  // normalized, editable for as long as the match exists.
+  substitutes: Record<string, string>;
   // Each player's individual rank number, parsed from "(N)" next to their
   // name in the pasted roster — keyed by normalized username. Separate
   // from Tier (a player's ordinal position within their team), which is
@@ -130,6 +140,7 @@ export interface MatchInput {
   teams: Team[];
   files: MatchFile[];
   renames: Record<string, string>;
+  substitutes?: Record<string, string>;
   playerRanks: Record<string, number>;
   excludeFromStats?: boolean;
 }

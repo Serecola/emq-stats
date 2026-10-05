@@ -201,17 +201,39 @@ export function generateRoundRobin(teams: Team[]): BracketRound[] {
   return rounds;
 }
 
-/** Roster team indices whose players appear in a raw song-history file. */
+/**
+ * Roster team indices whose players appear in a raw song-history file —
+ * counting a substitute as presence on the team of the player they stood in
+ * for, so an export with a sub in it still resolves to its two teams (and
+ * thus its fixture) instead of falling out of the bracket as unplaceable.
+ */
 export function fileParticipantIndices(
   file: Pick<MatchFile, 'data'>,
   teams: Team[],
-  renames: Record<string, string> = {}
+  renames: Record<string, string> = {},
+  substitutes: Record<string, string> = {}
 ): number[] {
   const present = fileRosterMembers(file, teams, renames);
   const idx: number[] = [];
   teams.forEach((team, i) => {
     if (team.some((name) => present.has(norm(name)))) idx.push(i);
   });
+  // A team none of whose roster members appear can still have played the
+  // game through a sub — check the room's other names against the substitute
+  // map. Both lookups (raw and renamed) are tried: a sub is never *also*
+  // renamed, but the export's name may have been reconciled as one or the
+  // other since, and either answer must still fill the slot.
+  if (idx.length < teams.length && Object.keys(substitutes).length > 0) {
+    const normTeams = teams.map((t) => t.map(norm));
+    for (const raw of extractUsernames(file.data)) {
+      const key = norm(renames[norm(raw)] || raw);
+      const target = substitutes[norm(raw)] ?? substitutes[key];
+      if (!target) continue;
+      const ti = normTeams.findIndex((t) => t.includes(norm(target)));
+      if (ti !== -1 && !idx.includes(ti)) idx.push(ti);
+    }
+    idx.sort((a, b) => a - b);
+  }
   return idx;
 }
 
@@ -308,7 +330,8 @@ export interface BracketAssignment {
 export function matchFilesToBracket(
   teams: Team[],
   files: MatchFile[],
-  renames: Record<string, string> = {}
+  renames: Record<string, string> = {},
+  substitutes: Record<string, string> = {}
 ): BracketAssignment {
   const rounds = generateRoundRobin(teams);
   // Pair key -> slots in bracket order (2 for a double round robin).
@@ -343,7 +366,7 @@ export function matchFilesToBracket(
   // — the earlier game first, so it fills the pair's first fixture and the
   // later one its rematch.
   for (const file of [...remaining].sort((a, b) => compareByExportTime(a.label, b.label))) {
-    const idx = fileParticipantIndices(file, teams, renames);
+    const idx = fileParticipantIndices(file, teams, renames, substitutes);
     if (idx.length !== 2) continue;
     const key = `${Math.min(idx[0], idx[1])},${Math.max(idx[0], idx[1])}`;
     const slot = (slotsByPair.get(key) ?? []).find((s) => !bySlot[s]);
@@ -366,13 +389,14 @@ function fixturePair(
   file: MatchFile,
   teams: Team[],
   renames: Record<string, string>,
-  pairBySlot: Map<string, [number, number]>
+  pairBySlot: Map<string, [number, number]>,
+  substitutes: Record<string, string> = {}
 ): [number, number] | null {
   if (file.slot) {
     const pair = pairBySlot.get(file.slot);
     if (pair) return pair;
   }
-  const idx = fileParticipantIndices(file, teams, renames);
+  const idx = fileParticipantIndices(file, teams, renames, substitutes);
   return idx.length === 2 ? [idx[0], idx[1]] : null;
 }
 
@@ -404,7 +428,8 @@ function fixturePair(
 export function withAssumedZeroScores(
   teams: Team[],
   files: MatchFile[],
-  renames: Record<string, string> = {}
+  renames: Record<string, string> = {},
+  substitutes: Record<string, string> = {}
 ): MatchFile[] {
   const pairBySlot = new Map<string, [number, number]>();
   for (const round of generateRoundRobin(teams)) {
@@ -416,7 +441,7 @@ export function withAssumedZeroScores(
   return files.map((file) => {
     const scores = file.scores;
     if (!scores || Object.keys(scores).length === 0) return file;
-    const pair = fixturePair(file, teams, renames, pairBySlot);
+    const pair = fixturePair(file, teams, renames, pairBySlot, substitutes);
     if (!pair) return file;
     const blank = pair.filter((teamIndex) => scores[norm(teams[teamIndex][0])] === undefined);
     // Exactly one side blank. Two blanks means the entered score belongs to
@@ -480,10 +505,11 @@ export function filesInStatsScope(
   teams: Team[],
   files: MatchFile[],
   renames: Record<string, string>,
-  scope: StatsScope
+  scope: StatsScope,
+  substitutes: Record<string, string> = {}
 ): MatchFile[] {
   if (isFullScope(scope)) return files;
-  const assignment = matchFilesToBracket(teams, files, renames);
+  const assignment = matchFilesToBracket(teams, files, renames, substitutes);
   const slotToRound = new Map<string, number>();
   for (const matchups of generateRoundRobin(teams).map((r) => r.matchups)) {
     for (const m of matchups) slotToRound.set(m.slot, m.displayRound);

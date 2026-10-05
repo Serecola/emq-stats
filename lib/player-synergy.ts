@@ -92,7 +92,7 @@ function add(cell: Cell, hit: boolean): void {
  * page is about, and each match's renames still win where both name them.
  */
 export function computePlayerSynergy(
-  matches: Pick<Match, 'teams' | 'files' | 'mode' | 'renames'>[],
+  matches: Pick<Match, 'teams' | 'files' | 'mode' | 'renames' | 'substitutes'>[],
   uname: string,
   aliases: PlayerAliases = {}
 ): PlayerSynergyStats {
@@ -117,10 +117,22 @@ export function computePlayerSynergy(
 
     // Roster first, so every displayed name (and the decision to count someone
     // at all) comes from the roster rather than from the export's own casing.
+    // Substitutes join under their own key — they're a different person, so
+    // their pairs are their own — but only when the player they stood in for
+    // is actually on this roster; an entry pointing nowhere is unreconciled,
+    // not a substitute. Their displayed casing is fixed on first appearance
+    // (the export's own spelling), same as the match page's synergy block.
     const roster = new Map<string, string>();
     match.teams.forEach((team) => {
       for (const name of team) roster.set(norm(name), name);
     });
+    const subKeys = new Set<string>();
+    for (const [subKey, target] of Object.entries(match.substitutes ?? {})) {
+      const key = norm(subKey);
+      if (roster.has(key) || !roster.has(norm(target))) continue;
+      roster.set(key, key); // placeholder until the export supplies casing
+      subKeys.add(key);
+    }
 
     for (const file of match.files) {
       for (const song of getSongs(file.data)) {
@@ -132,6 +144,9 @@ export function computePlayerSynergy(
           if (!answers) continue;
           const key = norm(renames[norm(answers.username)] || answers.username);
           if (!roster.has(key)) continue; // no roster, no identity across tours
+          // First appearance fixes a sub's displayed casing — the placeholder
+          // key only survives until the export spells the name once.
+          if (subKeys.has(key) && roster.get(key) === key) roster.set(key, answers.username);
           present.push({ key, answers: answers.byType });
         }
 
