@@ -746,15 +746,17 @@ match's raw JSON.
 
 The admin form's bracket takes a score per fixture, per team — a game's two
 sides, not the whole roster, so only the two teams in that fixture have boxes.
-Filling one side assumes the other scored 0: the opponent's box takes an
-editable `0` as soon as a number is typed (unless a number is already there —
-then it stays), so the fixture immediately reads `12–0` with the winner
-highlighted, and that 0 is saved with the game. Clearing a side takes back a
-`0` the form assumed, so emptying both boxes leaves the game unplayed again.
-A blank box still means that team scored nothing: a game saved with a score on
-one side only reads as that team winning by it with the other side on 0
-(`12–0`), which is what lets it decide its fixture, count in the standings and
-earn points — read literally it would be dropped instead (`computeGameResult`
+Entering a score on one side decides the fixture without filling the other
+box: the blank box is read as 0 for the result, so typing `12` immediately
+shows the game as `12–0` with the winner highlighted and the card solid —
+the boxes stay exactly as typed and no `0` appears in them. On save, a
+fixture with one side scored gets an actual `0` written for the blank
+opponent, so the stored record shows the same effective score; both boxes
+blank stays unplayed (nothing invents a game nobody scored). A blank box
+still means that team scored nothing: a game saved with a score on one side
+only reads as that team winning by it with the other side on 0 (`12–0`),
+which is what lets it decide its fixture, count in the standings and earn
+points — read literally it would be dropped instead (`computeGameResult`
 needs two scored teams), which is why a single-sided game used to show up
 nowhere.
 
@@ -762,13 +764,24 @@ The same assumption also still applies when a match is *read*:
 `withAssumedZeroScores` in `lib/schedule.ts` is called from `rowToMatch` in
 `lib/store.ts`, the one point where stored files become a `Match`, so every
 reader agrees (standings, bracket cards, the admin form's own score boxes) and
-a tournament carrying a single-sided game — one saved before the form filled
-the box in, or entered any other way — counts the same as one entered with
+a tournament carrying a single-sided game — one saved before the form wrote
+the missing 0, or entered any other way — counts the same as one entered with
 both numbers, with no migration and no re-save. The database keeps exactly
-what was typed (or the assumed `0` the form wrote). A file with no score at
-all stays unplayed (nothing invents a `0–0`), and a file that can't be pinned
-to one fixture — no slot, and its raw JSON names no two roster teams — is left
-exactly as entered.
+what was typed (or the `0` the form wrote for a blank opponent at submit). A
+file with no score at all stays unplayed (nothing invents a `0–0`), and a
+file that can't be pinned to one fixture — no slot, and its raw JSON names no
+two roster teams — is left exactly as entered.
+
+**Import Results** (above the bracket) fills every fixture's score boxes from
+a clipboard table in the same shape the roster is pasted in: one game per
+line, tab-separated — `Team 1  Score 1  Team 2  Score 2`, optionally under
+that header. Team cells are matched to the current roster with their `(rank)`
+annotations stripped; for a pairing that plays twice (the 4-team double
+round robin) the first row for that pair fills its first fixture in bracket
+order and the second row the rematch. Scores already entered are only
+replaced after a confirmation, and nothing is persisted until the tournament
+is saved — the import just types into the same boxes. Where the browser
+blocks reading the clipboard, the button falls back to a paste prompt.
 
 ## How stats are computed
 
