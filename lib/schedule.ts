@@ -395,7 +395,10 @@ function fixturePair(
  * they're saved, so a tournament that already carries a single-sided game —
  * and any written before this rule existed — behaves the same as a freshly
  * saved one, with no migration and no re-save. Idempotent: a filled-in 0 is
- * just a score like any other.
+ * just a score like any other. The admin form now also writes its assumed 0
+ * into the opponent's box as a score is typed (see MatchForm's
+ * setScoreForSlot), but this stays the read-side guarantee for anything
+ * saved without one.
  */
 export function withAssumedZeroScores(
   teams: Team[],

@@ -89,6 +89,13 @@ function rowToMatchSummary(row: MatchRow): MatchSummary {
 const SELECT_COLUMNS =
   'id, title, name, date, region, mode, submode, created_at, teams, files, renames, player_ranks, file_count, exclude_from_stats';
 
+// Tour display order: newest date first; tours sharing a date run in play
+// order NA, then EU, then Asia (see REGION_ORDER in lib/types.ts); creation
+// time breaks any remaining tie (same date + region).
+const MATCH_ORDER_BY = `ORDER BY date DESC,
+  CASE region WHEN 'NA' THEN 0 WHEN 'EU' THEN 1 WHEN 'Asia' THEN 2 ELSE 3 END ASC,
+  created_at DESC`;
+
 // Everything except `files`: one raw EMQ export is ~100 kB, a tournament
 // ~2 MB, and list views only render the count — which `file_count` has held
 // since it was written, so they never touch the payload at all.
@@ -164,7 +171,7 @@ export async function listMatches(): Promise<Match[]> {
   await ensureSchema();
   return cached('matches', async () => {
     const res = await getDb().execute(
-      `SELECT ${SELECT_COLUMNS} FROM matches ORDER BY date DESC, created_at DESC`
+      `SELECT ${SELECT_COLUMNS} FROM matches ${MATCH_ORDER_BY}`
     );
     return res.rows.map((r) => rowToMatch(r as unknown as MatchRow));
   });
@@ -178,7 +185,7 @@ export async function listMatches(): Promise<Match[]> {
 export async function listMatchSummaries(): Promise<MatchSummary[]> {
   await ensureSchema();
   const res = await getDb().execute(
-    `SELECT ${SUMMARY_COLUMNS} FROM matches ORDER BY date DESC, created_at DESC`
+    `SELECT ${SUMMARY_COLUMNS} FROM matches ${MATCH_ORDER_BY}`
   );
   return res.rows.map((r) => rowToMatchSummary(r as unknown as MatchRow));
 }

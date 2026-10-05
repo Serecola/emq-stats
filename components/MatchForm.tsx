@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import type { Match, MatchFile, Mode, Region, SetRanks, Submode } from '@/lib/types';
@@ -80,7 +80,9 @@ export default function MatchForm({
   );
   // Per-file, per-team score entry: scores[fileId][normalizedTeamLabel] = "12"
   // (kept as strings while editing; parsed to numbers on submit). Seeded
-  // from any scores already saved on the match.
+  // from any scores already saved on the match. The 0 the form assumes for a
+  // blank opponent (see setScoreForSlot) is stored here as a plain "0" like
+  // any typed number — what's in these boxes is what gets saved.
   const [scores, setScores] = useState<Record<string, Record<string, string>>>(() => {
     const initial: Record<string, Record<string, string>> = {};
     if (existing) {
@@ -94,6 +96,12 @@ export default function MatchForm({
     }
     return initial;
   });
+  // Score entries this form filled in itself as an assumed 0 (see
+  // setScoreForSlot), keyed `fileId\0teamLabel`. Tracking which zeros were
+  // assumed — versus typed — is what lets clearing one side take the
+  // assumption back on the other: a fixture emptied to nothing is unscored
+  // again, instead of leaving a lone 0 behind that would read back as 0–0.
+  const assumedZerosRef = useRef<Set<string>>(new Set());
   const [renames, setRenames] = useState<Record<string, string>>(existing?.renames ?? {});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -304,6 +312,16 @@ export default function MatchForm({
         }
         return next;
       });
+      // The carried-over scores keep their assumed zeros — re-key the marks
+      // to the new file id so clearing one side still revokes the other's
+      // assumption under it.
+      const from = `${replaced.id}\u0000`;
+      for (const key of [...assumedZerosRef.current]) {
+        if (key.startsWith(from)) {
+          assumedZerosRef.current.delete(key);
+          assumedZerosRef.current.add(`${pinnedId}\u0000${key.slice(from.length)}`);
+        }
+      }
     }
   }
 
@@ -342,14 +360,53 @@ export default function MatchForm({
   // Entering a score for a matchup that has no file yet creates a
   // placeholder file (empty JSON) so the score has somewhere to live; the
   // JSON can be attached later and the scores carry over.
-  function setScoreForSlot(slot: string, teamLabelNorm: string, value: string) {
+  //
+  // Filling one team's box assumes the opponent scored 0 — the same rule the
+  // saved match reads back with (withAssumedZeroScores) — so the other box
+  // takes an editable "0" as soon as a number is typed. The fixture then
+  // shows its result (12–0, winner highlighted, card solid) before save, and
+  // the 0 is saved explicitly instead of only being inferred on read. A
+  // number already sitting in the opponent's box is never touched (the
+  // assumption stands only "unless overwritten"). Typing over an assumed 0
+  // makes it a typed score; clearing a side revokes an assumed 0 on the
+  // other, so emptying both boxes leaves the game unscored rather than a
+  // stray 0.
+  function setScoreForSlot(
+    slot: string,
+    teamLabelNorm: string,
+    opponentLabelNorm: string,
+    value: string
+  ) {
     const existingFile = assignment.bySlot[slot];
     let fileId = existingFile?.id;
     if (!fileId) {
       fileId = nanoid(6);
       setFiles((prev) => [...prev, { id: fileId!, label: '', text: '', error: null, slot }]);
     }
-    setScores((prev) => ({ ...prev, [fileId!]: { ...prev[fileId!], [teamLabelNorm]: value } }));
+    const teamKey = `${fileId!}\u0000${teamLabelNorm}`;
+    const opponentKey = `${fileId!}\u0000${opponentLabelNorm}`;
+    // Whatever is typed here is the admin's own number, never an assumption.
+    assumedZerosRef.current.delete(teamKey);
+    const opponentBlank = (scores[fileId!]?.[opponentLabelNorm] ?? '').trim() === '';
+    // Decided here, against the current render's state, so the updater below
+    // stays pure — React may run it twice (StrictMode).
+    let assumedFill = false;
+    let assumedRevoke = false;
+    if (value.trim() === '') {
+      // Clearing a side takes back an assumed 0 on the other (no-op for a
+      // typed 0, which is only ever removed by clearing its own box).
+      assumedRevoke = assumedZerosRef.current.delete(opponentKey);
+    } else if (opponentBlank) {
+      assumedZerosRef.current.add(opponentKey);
+      assumedFill = true;
+    }
+    setScores((prev) => {
+      const fileScores = { ...prev[fileId!] };
+      fileScores[teamLabelNorm] = value;
+      if (assumedFill) fileScores[opponentLabelNorm] = '0';
+      if (assumedRevoke) delete fileScores[opponentLabelNorm];
+      return { ...prev, [fileId!]: fileScores };
+    });
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -750,7 +807,9 @@ export default function MatchForm({
                     const tie = aNum !== null && bNum !== null && aNum === bNum;
                     const bothScored = aNum !== null && bNum !== null;
                     // Same card treatment as the match page's bracket: dashed and
-                    // faded until both scores are in, solid once played.
+                    // faded until both scores are in, solid once played. Filling
+                    // either box assumes the other is 0 (setScoreForSlot), so a
+                    // single number already solidifies the card.
                     return (
                       <div
                         key={m.slot}
@@ -836,7 +895,7 @@ export default function MatchForm({
                               value={aVal}
                               win={aWin}
                               tie={tie}
-                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelA), v)}
+                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelA), norm(m.labelB), v)}
                             />
                           }
                         />
@@ -851,7 +910,7 @@ export default function MatchForm({
                               value={bVal}
                               win={bWin}
                               tie={tie}
-                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelB), v)}
+                              onChange={(v) => setScoreForSlot(m.slot, norm(m.labelB), norm(m.labelA), v)}
                             />
                           }
                         />

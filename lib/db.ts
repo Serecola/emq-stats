@@ -51,7 +51,10 @@ export function ensureSchema(): Promise<void> {
       // Structure in one round trip: the table DDL, the shared cache stamp
       // (see lib/cache.ts) and the index the list views order by. Filtering
       // by mode/sub-mode happens in JS (applyMatchFilter), so the list order
-      // is the only ordering SQL can index for.
+      // is the only ordering SQL can index for. The index covers the date
+      // term of MATCH_ORDER_BY (lib/store.ts); its same-day region term is a
+      // CASE, which no index can serve, but the tournament count is small
+      // enough that sorting the day's rows in memory costs nothing.
       await db.batch([
         `CREATE TABLE IF NOT EXISTS matches (
           id TEXT PRIMARY KEY,

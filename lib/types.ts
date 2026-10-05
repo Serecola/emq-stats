@@ -5,6 +5,19 @@ export type Team = string[];
 export type Region = 'NA' | 'EU' | 'Asia';
 export const REGIONS: Region[] = ['NA', 'EU', 'Asia'];
 
+/**
+ * Same-day tour order: NA first, then EU, then Asia — the order the regions
+ * play in on a shared date. Used as the tiebreak between `date` and
+ * `created_at` everywhere tournaments are listed (see `MATCH_ORDER_BY`).
+ * Unknown/legacy region values sort last so they never wedge between the
+ * known three.
+ */
+export const REGION_ORDER: Record<string, number> = { NA: 0, EU: 1, Asia: 2 };
+
+export function regionOrder(region: string): number {
+  return REGION_ORDER[region] ?? 3;
+}
+
 // Gamemodes in priority order: Erumode is listed first everywhere modes are
 // offered or displayed — the match form's picker, the tournament-list chips,
 // the /players sub-mode rows, per-mode stat sections, the Player Manager's

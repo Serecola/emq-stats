@@ -746,21 +746,29 @@ match's raw JSON.
 
 The admin form's bracket takes a score per fixture, per team — a game's two
 sides, not the whole roster, so only the two teams in that fixture have boxes.
-A blank box means that team scored nothing: a score typed on one side only
-reads as that team winning by it with the other side on 0 (`12–0`), which is
-what lets the game decide its fixture, count in the standings and earn points.
-Read literally it would be dropped instead (`computeGameResult` needs two
-scored teams), which is why a single-sided game used to show up nowhere.
+Filling one side assumes the other scored 0: the opponent's box takes an
+editable `0` as soon as a number is typed (unless a number is already there —
+then it stays), so the fixture immediately reads `12–0` with the winner
+highlighted, and that 0 is saved with the game. Clearing a side takes back a
+`0` the form assumed, so emptying both boxes leaves the game unplayed again.
+A blank box still means that team scored nothing: a game saved with a score on
+one side only reads as that team winning by it with the other side on 0
+(`12–0`), which is what lets it decide its fixture, count in the standings and
+earn points — read literally it would be dropped instead (`computeGameResult`
+needs two scored teams), which is why a single-sided game used to show up
+nowhere.
 
-That assumption is applied when a match is *read*, not when it's saved:
+The same assumption also still applies when a match is *read*:
 `withAssumedZeroScores` in `lib/schedule.ts` is called from `rowToMatch` in
 `lib/store.ts`, the one point where stored files become a `Match`, so every
 reader agrees (standings, bracket cards, the admin form's own score boxes) and
-a tournament saved with a single-sided game counts the same as one entered with
-both numbers — no migration and no re-save. The database keeps exactly what was
-typed. A file with no score at all stays unplayed (nothing invents a `0–0`),
-and a file that can't be pinned to one fixture — no slot, and its raw JSON
-names no two roster teams — is left exactly as entered.
+a tournament carrying a single-sided game — one saved before the form filled
+the box in, or entered any other way — counts the same as one entered with
+both numbers, with no migration and no re-save. The database keeps exactly
+what was typed (or the assumed `0` the form wrote). A file with no score at
+all stays unplayed (nothing invents a `0–0`), and a file that can't be pinned
+to one fixture — no slot, and its raw JSON names no two roster teams — is left
+exactly as entered.
 
 ## How stats are computed
 

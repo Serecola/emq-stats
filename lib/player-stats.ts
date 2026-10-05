@@ -3,12 +3,16 @@ import { computeMatchStats } from './stats';
 import { computeGuessRateStats } from './guess-stats';
 import { expectationFromDiff, type ExpectationLabel } from './expectation';
 import { resolveAliasKey, withAliases, type PlayerAliases } from './player-aliases';
-import type { Match } from './types';
+import { regionOrder, type Match, type Region } from './types';
 
 export interface PlayerMatchEntry {
   matchId: string;
   matchTitle: string;
   date: string;
+  // The tournament's region, kept on the entry so a player's history can
+  // order same-day tournaments the way the tour lists do (NA, EU, Asia —
+  // see REGION_ORDER) rather than by push order alone.
+  region: Region;
   mode: Match['mode'];
   songs: number;
   guessRate: number; // %
@@ -265,6 +269,7 @@ export function computeAllPlayerStats(
           matchId: match.id,
           matchTitle: match.title,
           date: match.date,
+          region: match.region,
           mode: match.mode,
           songs: row.songs,
           guessRate: row.guessRate,
@@ -305,6 +310,7 @@ export function computeAllPlayerStats(
           matchId: match.id,
           matchTitle: match.title,
           date: match.date,
+          region: match.region,
           mode: match.mode,
           songs: row.songs,
           correct: row.correct,
@@ -344,7 +350,13 @@ export function computeAllPlayerStats(
     const vn = vnStatsOf(s.entries);
     s.erumode.vnGuessRate = vn.vnGuessRate;
     s.erumode.vnExpectedRank = vn.vnExpectedRank;
-    s.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    // Most recent first; same-day tournaments run NA, EU, Asia — the same
+    // order the tour lists show them in (MATCH_ORDER_BY in lib/store.ts).
+    s.entries.sort(
+      (a, b) =>
+        (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) ||
+        regionOrder(a.region) - regionOrder(b.region)
+    );
   }
   summaries.sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.uname.localeCompare(b.uname));
   return summaries;
