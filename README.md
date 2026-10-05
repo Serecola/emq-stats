@@ -813,3 +813,26 @@ quiz's own page plus Wikidata/EGS/VGMdb entries, and only the VNDB one is a link
 *to the VN*. It opens in a new tab (`rel="noreferrer"`) so the tournament page
 stays put, and a VN whose source carries no VNDB link renders as plain text
 rather than a dead link.
+
+A **Copy** button sits next to the heading. It copies the table plus the rig
+distribution (`formatVnCopySummary` in `lib/vn-plays.ts`) as plain text:
+
+```text
+MOST PLAYED
+2 plays: D-EVE in you
+...
+RIG DISTRIBUTION
+Aisu: 46 (41.1%) | 17 OPs, 17 EDs, 11 Ins, 1 OP/EDs
+...
+```
+
+The VN lines are the table's displayed rows. The rig lines are each player's
+Rigs count from the Guess Rate table — with its share of their songs at the
+same 1dp — plus that count split into OP / ED / Ins / OP-ED, sorted by rig
+count (ties by name). Each rigged song counts once, typed by its primary
+source (`Sources[0].SongTypes`, the same type the Guess Rate table grades it
+under); a song tagged both OP and ED lands in the mixed bucket labelled
+`OP/EDs`. Labels stay plural even for one (`1 OP/EDs`), and an empty bucket is
+left off rather than printed as zero. Both halves read the same scoped files
+as the page, so the copy narrows with the round/game selector like everything
+else.

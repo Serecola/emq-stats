@@ -1,6 +1,6 @@
 import { teamColor } from '@/lib/team-colors';
 import { formatMvpSummary, signed, type MvpStats } from '@/lib/mvp';
-import CopyMvpButton from './CopyMvpButton';
+import { CopyMvpButton } from './CopyMvpButton';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 

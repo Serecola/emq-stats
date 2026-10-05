@@ -17,7 +17,7 @@ import {
 import { computeMatchResults } from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
 import { computeSynergyStats, type SynergyStats } from '@/lib/synergy';
-import { computeVnPlays, type VnPlayStats } from '@/lib/vn-plays';
+import { computeVnPlays, formatVnCopySummary, type VnPlayStats } from '@/lib/vn-plays';
 import { hasAdminSession } from '@/lib/admin-session';
 import StatsTable from '@/components/StatsTable';
 import GuessRateTable from '@/components/GuessRateTable';
@@ -25,6 +25,7 @@ import ResultsSection from '@/components/ResultsSection';
 import MvpSection from '@/components/MvpSection';
 import SynergySection from '@/components/SynergySection';
 import VnPlaysSection from '@/components/VnPlaysSection';
+import CopyButton from '@/components/CopyMvpButton';
 import RoundRobinGrid from '@/components/RoundRobinGrid';
 import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
 import BackToTop from '@/components/BackToTop';
@@ -314,9 +315,20 @@ export default async function MatchPage({
           <ErrorBox label="Most Played VNs" err={vnPlaysError} />
         ) : vnPlays?.hasData ? (
           <div id="most-played-vns" className="scroll-mt-16">
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-textMuted">
-              Most Played VNs
-            </h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-textMuted">
+                Most Played VNs
+              </h3>
+              {/* The copy covers this table plus the rig distribution derived
+                  from the Guess Rate table (see formatVnCopySummary) — the
+                  heading it sits next to is just the one people look for
+                  first. */}
+              <CopyButton
+                text={formatVnCopySummary(vnPlays, guessStats)}
+                label="Copy most played VNs and rig distribution as plain text"
+                ariaLabel="Copy most played VNs and rig distribution as plain text"
+              />
+            </div>
             <VnPlaysSection stats={vnPlays} />
           </div>
         ) : null}

@@ -29,6 +29,10 @@ export interface NgmcGuessRow {
   rigHits: number; // correct guesses that were on their list
   rigGr: number; // % of their on-list guesses that were correct
   rigCount: number; // total guesses that were on their list
+  rigOp: number; // of those, on OP-only songs
+  rigEd: number; // of those, on ED-only songs
+  rigIns: number; // of those, on Insert-only songs
+  rigMixed: number; // of those, on multi-type songs — copied as OP/EDs
   offlistGr: number; // % correct among guesses NOT on their list
   correct: number;
   songs: number;
@@ -49,6 +53,10 @@ export interface ErumodeGuessRow {
   vnPerformance: number | null; // computePerformance over vnGuessRate
   rigGr: number;
   rigCount: number;
+  rigOp: number; // rigs on OP-only songs
+  rigEd: number; // rigs on ED-only songs
+  rigIns: number; // rigs on Insert-only songs
+  rigMixed: number; // rigs on multi-type songs — copied as OP/EDs
   // Raw counts behind rigGr/offlistGr, kept beside them so a caller pooling
   // several tournaments can sum the counts and divide once — averaging the
   // percentages instead would weight a three-song event like a thirty-song
@@ -79,6 +87,10 @@ interface PlayerAccum {
   erigs: number;
   rigHits: number;
   rigCount: number;
+  rigOp: number;
+  rigEd: number;
+  rigIns: number;
+  rigMixed: number;
   gameFiles: Set<string>;
   saCorrectCount: number[]; // per ANSWER_TYPES index
   saRigHits: number[]; // per ANSWER_TYPES index
@@ -94,6 +106,10 @@ function emptyAccum(uname: string): PlayerAccum {
     erigs: 0,
     rigHits: 0,
     rigCount: 0,
+    rigOp: 0,
+    rigEd: 0,
+    rigIns: 0,
+    rigMixed: 0,
     gameFiles: new Set(),
     saCorrectCount: new Array(ANSWER_TYPES.length).fill(0),
     saRigHits: new Array(ANSWER_TYPES.length).fill(0),
@@ -221,7 +237,24 @@ export function computeGuessRateStats(
           }
         }
 
-        if (pd[fAT]?.IsOnList) acc.rigCount++;
+        // Rigs split by the song's type, so the Most Played VNs copy can print
+        // the OP/ED/Ins breakdown beside each player's count. A whole song
+        // (PlayerGuessInfos entry) is one rig, typed by its primary source —
+        // Sources[0].SongTypes, the same type the Guess Rate table grades the
+        // song under. A song tagged both OP and ED lands in the mixed bucket
+        // the copy labels OP/EDs. The four buckets always sum to rigCount.
+        if (pd[fAT]?.IsOnList) {
+          acc.rigCount++;
+          const primary = song?.Song?.Sources?.[0]?.SongTypes ?? [];
+          const hasOP = primary.includes('OP');
+          const hasED = primary.includes('ED');
+          const hasIns = primary.includes('Insert');
+          if (hasOP && hasED) acc.rigMixed++;
+          else if (primary.length === 1 && hasOP) acc.rigOp++;
+          else if (primary.length === 1 && hasED) acc.rigEd++;
+          else if (primary.length === 1 && hasIns) acc.rigIns++;
+          else acc.rigMixed++;
+        }
 
         acc.gameFiles.add(file.id);
       }
@@ -247,6 +280,10 @@ export function computeGuessRateStats(
         rigHits: acc.rigHits,
         rigGr: acc.rigCount ? (100 * acc.rigHits) / acc.rigCount : 0,
         rigCount: acc.rigCount,
+        rigOp: acc.rigOp,
+        rigEd: acc.rigEd,
+        rigIns: acc.rigIns,
+        rigMixed: acc.rigMixed,
         offlistGr: offlistSongs > 0 ? (100 * offlistCorrect) / offlistSongs : 0,
         correct: acc.correctCount[3],
         songs: acc.songCount[3],
@@ -310,6 +347,10 @@ export function computeGuessRateStats(
       vnPerformance,
       rigGr,
       rigCount: acc.rigCount,
+      rigOp: acc.rigOp,
+      rigEd: acc.rigEd,
+      rigIns: acc.rigIns,
+      rigMixed: acc.rigMixed,
       rigHits: totalActiveRigHits,
       offlistHits: offlistCorrect,
       offlistCount: offlistOpportunities,

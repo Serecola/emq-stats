@@ -1,4 +1,5 @@
 import { getSongs, getVNSource } from './stats';
+import type { GuessRateStats } from './guess-stats';
 import type { Match } from './types';
 
 /**
@@ -88,4 +89,60 @@ export function computeVnPlays(match: Pick<Match, 'files'>): VnPlayStats {
     totalSongs,
     hasData: ranked.length > 0,
   };
+}
+
+/**
+ * The Most Played VNs block plus the rig distribution as plain text, for
+ * pasting into a Discord post or a sheet:
+ *
+ *   MOST PLAYED
+ *   2 plays: D-EVE in you
+ *   ...
+ *   RIG DISTRIBUTION
+ *   Aisu: 46 (41.1%) | 17 OPs, 17 EDs, 11 Ins, 1 OP/EDs
+ *   ...
+ *
+ * The VN lines mirror the table's displayed rows (the top-N cut, in rank
+ * order). The rig lines mirror the Guess Rate table's Rigs column — each
+ * player's on-list count with its share of their songs at the same 1dp as the
+ * table — plus the OP/ED/Ins/OP-ED split of that count. Each rigged song
+ * counts once, typed by its primary source (Sources[0].SongTypes, the same
+ * type the Guess Rate table grades it under); a song tagged both OP and ED
+ * lands in the mixed bucket labelled OP/EDs. The rig lines are sorted by rig
+ * count descending (ties by name) rather than the table's guess-rate order,
+ * since this block ranks rigs.
+ *
+ * Labels stay plural even for a count of one (`1 OP/EDs`, `2 plays`), and a
+ * bucket with no rigs is left off rather than printed as zero, so a player
+ * with no multi-type rigs reads `13 OPs, 16 EDs, 9 Ins` with nothing after
+ * it. A player with no rigs at all keeps just the head (`name: 0 (0.0%)`).
+ *
+ * `guess` is null when the Guess Rate stats failed to compute — then the copy
+ * is just the MOST PLAYED section rather than nothing.
+ */
+export function formatVnCopySummary(vn: VnPlayStats, guess: GuessRateStats | null): string {
+  const lines: string[] = ['MOST PLAYED'];
+  for (const row of vn.rows) {
+    lines.push(`${row.plays} plays: ${row.vn}`);
+  }
+
+  if (guess) {
+    lines.push('RIG DISTRIBUTION');
+    const rows = guess.mode === 'Erumode' ? guess.erumodeRows : guess.ngmcRows;
+    const sorted = [...rows].sort((a, b) => b.rigCount - a.rigCount || a.uname.localeCompare(b.uname));
+    for (const r of sorted) {
+      const head =
+        r.songs > 0
+          ? `${r.uname}: ${r.rigCount} (${(((100 * r.rigCount) / r.songs).toFixed(1))}%)`
+          : `${r.uname}: ${r.rigCount}`;
+      const parts: string[] = [];
+      if (r.rigOp > 0) parts.push(`${r.rigOp} OPs`);
+      if (r.rigEd > 0) parts.push(`${r.rigEd} EDs`);
+      if (r.rigIns > 0) parts.push(`${r.rigIns} Ins`);
+      if (r.rigMixed > 0) parts.push(`${r.rigMixed} OP/EDs`);
+      lines.push(parts.length > 0 ? `${head} | ${parts.join(', ')}` : head);
+    }
+  }
+
+  return lines.join('\n');
 }
