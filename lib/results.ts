@@ -262,12 +262,28 @@ export function computePlayerGameRecords(
 }
 
 /**
+ * Games a player must have played in range before a win rate is quoted at all.
+ *
+ * One game is a 100% or a 0% with nothing in between, two games are 100/50/0,
+ * three are already all-or-nothing — small samples swing so hard they read as
+ * form when they are really sample size. Four games is where the number starts
+ * saying something about the player, so below it every win rate in the app
+ * prints a dash rather than a figure nobody should act on.
+ *
+ * Counted over *games*, the same denominator `winRatePct` divides by — so this
+ * gate asks "enough games to quote a per-game rate?", not "enough games to have
+ * played any?".
+ */
+export const MIN_GAMES_FOR_WINRATE = 4;
+
+/**
  * A record as a win percentage: a win is worth a point, a tie half, a loss
  * nothing, over the games played — so 2 wins, 1 tie and 3 losses is
- * (2 + 0.5) / 6 = 41.7%. Null when there's no game to divide by, so a caller
- * can print a dash instead of a 0% that reads like a loss streak.
+ * (2 + 0.5) / 6 = 41.7%. Null when there's no game to divide by, or when the
+ * record is short of MIN_GAMES_FOR_WINRATE, so a caller can print a dash
+ * instead of a 0% that reads like a loss streak — or a 100% off one game.
  */
 export function winRatePct(record: PlayerGameRecord | undefined): number | null {
-  if (!record || record.games === 0) return null;
+  if (!record || record.games < MIN_GAMES_FOR_WINRATE) return null;
   return (100 * (record.wins + 0.5 * record.ties)) / record.games;
 }

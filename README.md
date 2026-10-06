@@ -598,6 +598,25 @@ the granularity a draft is balanced at and each sub-mode has its own ladder
   `lib/percent-heat.ts`, shared by this table and the `/players` list, which
   walks the hue the long way round, red → yellow → green, so the middle of the
   scale never goes muddy).
+
+  **The figure appears in all four player-facing stats tables**, always per game
+  and never per tournament:
+
+  | Table | What it covers |
+  | --- | --- |
+  | `/matches/<id>` → Guess Rate | This tournament, and whatever the round / game filter is scoped to — the WR column sits after Games and follows that scope. |
+  | `/players/<name>` | The Winrate stat card beside Guess Rate / Songs / Attacks / Blocks, over the tournaments the page is showing (Recent or All-Time), with the W-L-T record underneath. |
+  | `/players` | The WR column of the players list, over the range toggle above it. |
+  | `/admin/players` | The Winrate column of the Player Manager, same range. |
+
+  **Below four games nothing is quoted** (`MIN_GAMES_FOR_WINRATE` in
+  `lib/results.ts`): the cell prints `—`, because one game is a 100% or a 0% with
+  nothing between them and three are still all-or-nothing — a rate that small is
+  sample size, not form. The gate counts *games*, the same denominator the rate
+  divides by, so a short range on an otherwise well-played player (a "Recent"
+  window, or a match page filtered to two rounds) blanks the figure rather than
+  quoting it off a handful of games. The player page says how many games it
+  actually has underneath the dash.
 - **Expected Rank** — what the player's results imply: the songs-weighted mean
   of their per-tournament Performance rating (`lib/guess-stats.ts`) across the
   selected gamemode + sub-mode. It uses the same scale as the `(N)` ranks a
@@ -705,7 +724,12 @@ global and retroactive: it feeds the *same* name-resolution path `renames` does
   ladder entry, keyed by the canonical name;
 - a Set Rank saved under the old name moves onto the canonical player, as does
   its bot/override row (the canonical player's own value wins on conflict, so
-  nothing it was explicitly set to gets clobbered).
+  nothing it was explicitly set to gets clobbered);
+- an export that uses the alias attaches to the main name wherever raw JSON
+  meets a roster: the match form counts the name as present without asking for
+  a rename, leaves it out of the unmatched-names panel, never puts the
+  substitute dialog to it, and places the file on the right fixture — the same
+  fold the stats tables already use.
 
 Chains are flattened (`Aisu → aisu → AisuBot` resolves to `AisuBot`) and cycles
 are refused rather than followed. Adding an alias is a deliberate merge, not a
@@ -768,14 +792,18 @@ team). Those answers move the numbers in opposite directions, so the form asks
 instead of guessing: `detectSubstituteQuestions` in `lib/substitutes.ts` spots
 the pattern on upload and one dialog per changed name asks which it is,
 preselecting the replaced player whenever the team it belongs to has exactly
-one open slot.
+one open slot. A name covered by a global alias never reaches this question:
+with the alias folded into the roster match it already reads as the player it
+belongs to (see Aliases above).
 
 The answer is stored per match in `substitutes` (`norm(name from JSON) ->
 norm(roster player)`, a column next to `renames`, so it survives edits and
 travels in the export archive) and can be changed any time from the same
 unmatched-names panel that already handled renames — its select now offers
 *Rename to …* and *Substitute for …* for every name an upload contains that the
-pasted roster doesn't know.
+pasted roster doesn't know. Names a global alias already resolves onto a
+roster player aren't listed at all: they've attached to that main name
+automatically, so there is nothing left to decide.
 
 What a substitute changes downstream:
 

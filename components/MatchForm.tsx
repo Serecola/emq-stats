@@ -24,6 +24,7 @@ import { matchResultsToFixtures, parseResultsTsv } from '@/lib/import-results';
 import { detectSubstituteQuestions, type SubstituteQuestion } from '@/lib/substitutes';
 import { formatMatchTitle } from '@/lib/match-title';
 import { extractUsernames } from '@/lib/stats';
+import { resolveAliasKey, withAliases, type PlayerAliases } from '@/lib/player-aliases';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -50,6 +51,7 @@ export default function MatchForm({
   savedRanks,
   expectedRanks,
   vnExpectedRanks,
+  aliases = {},
 }: {
   existing?: Match;
   // The admin's Set Ranks from the Player Manager, keyed mode -> sub-mode ->
@@ -66,6 +68,12 @@ export default function MatchForm({
   // combined source there is no Set Rank fallback: players with no VN data
   // are treated as unranked, like the old Pasted-table source.
   vnExpectedRanks?: SetRanks;
+  // Global alias map from listPlayerAliases() — normalized alias -> canonical
+  // display name. A name in an uploaded JSON that is a known alias of a roster
+  // player attaches to that main name in the teams automatically: the same
+  // fold every stats read applies (withAliases), so the form and the published
+  // views can never disagree about who was in the room.
+  aliases?: PlayerAliases;
 }) {
   const router = useRouter();
   const [name, setName] = useState(existing?.name ?? '');
@@ -203,9 +211,18 @@ export default function MatchForm({
     [files]
   );
 
+  // The form's effective name map: this match's own renames first, the global
+  // aliases folded underneath (withAliases — renames win wherever both speak).
+  // Every place the raw JSON is matched against the pasted roster reads through
+  // this, so a JSON name carrying an alias attaches to that player's main name
+  // in the teams with no per-match rename to pick — the same resolution the
+  // stats reads apply. The saved `renames` payload stays the raw state below:
+  // aliases are global and are never baked into a match.
+  const resolvedRenames = useMemo(() => withAliases(renames, aliases), [renames, aliases]);
+
   const assignment = useMemo(
-    () => matchFilesToBracket(parsedTeams, filesForMatch, renames, substitutes),
-    [parsedTeams, filesForMatch, renames, substitutes]
+    () => matchFilesToBracket(parsedTeams, filesForMatch, resolvedRenames, substitutes),
+    [parsedTeams, filesForMatch, resolvedRenames, substitutes]
   );
   const draftById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files]);
 
@@ -266,17 +283,31 @@ export default function MatchForm({
   // in the pasted roster. Computed from the raw JSON only (not affected by
   // renames already chosen) so an entry never disappears once you've fixed
   // it — it just shows its current mapping and stays editable.
+  //
+  // The one exception is a global alias: a name the aliases resolve onto a
+  // roster player is already attached to that main name (see resolvedRenames),
+  // so there is nothing left to ask and it isn't listed at all. An explicit
+  // per-match rename or substitute still keeps its row up — the admin's own
+  // decision stays visible and editable, and it wins over the alias too.
   const unmatchedNames = useMemo(() => {
     if (rosterNames.length === 0) return [];
     const firstSeen = new Map<string, string>();
     for (const data of Object.values(parsedDrafts.data)) {
       for (const u of extractUsernames(data)) {
         const key = norm(u);
-        if (!rosterSetNorm.has(key) && !firstSeen.has(key)) firstSeen.set(key, u);
+        if (rosterSetNorm.has(key)) continue;
+        if (
+          renames[key] === undefined &&
+          substitutes[key] === undefined &&
+          rosterSetNorm.has(resolveAliasKey(u, aliases))
+        ) {
+          continue; // alias-attached to a roster player — not an odd name
+        }
+        if (!firstSeen.has(key)) firstSeen.set(key, u);
       }
     }
     return [...firstSeen.entries()]; // [normalizedKey, rawName][]
-  }, [parsedDrafts, rosterNames, rosterSetNorm]);
+  }, [parsedDrafts, rosterNames, rosterSetNorm, renames, substitutes, aliases]);
 
   // The two readings of an odd name are mutually exclusive — a name is
   // either the same person renamed or a different person filling a slot —
@@ -390,7 +421,9 @@ export default function MatchForm({
     // specific player or the same player renamed: the two answers move
     // stats in opposite directions, so guessing is not an option. Asked
     // once per name per session (askedSubNames), and only against a roster
-    // — detection is meaningless without one.
+    // — detection is meaningless without one. Detection reads the
+    // alias-folded `resolvedRenames`, so a JSON name that is a known alias
+    // of a roster player counts as matched and never becomes a question.
     if (parsedTeams.length > 0) {
       const asked: (SubstituteQuestion & { fileLabel: string })[] = [];
       for (const draft of drafts) {
@@ -400,7 +433,7 @@ export default function MatchForm({
         } catch {
           continue; // invalid JSON surfaces as a form error on save, not here
         }
-        for (const q of detectSubstituteQuestions(data, parsedTeams, renames, substitutes)) {
+        for (const q of detectSubstituteQuestions(data, parsedTeams, resolvedRenames, substitutes)) {
           if (askedSubNames.current.has(q.key)) continue;
           askedSubNames.current.add(q.key);
           asked.push({ ...q, fileLabel: draft.label });

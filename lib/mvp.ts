@@ -117,6 +117,19 @@ export function signed(n: number): string {
 }
 
 /**
+ * At most two decimals, trailing zeros trimmed — `22.000000000000004` reads
+ * as "22", `24.75` as "24.75", `11.7` as "11.7".
+ *
+ * The team's expected level is a Σ of ranks, and summing binary floats can
+ * leave noise on the total (`0.1 + 0.2 = 0.30000000000000004`), so it goes
+ * through this before being printed — page and copied text alike — instead of
+ * the raw float.
+ */
+export function fmt2(n: number): string {
+  return String(Number(n.toFixed(2)));
+}
+
+/**
  * Discord custom-emoji shortcodes, in podium order — the same order as the
  * medals MvpSection draws. The copied text is meant to land in a Discord post,
  * where these render as the real medals.
@@ -129,9 +142,10 @@ const PODIUM_EMOJI = [':first_place:', ':second_place:', ':third_place:'];
 /**
  * The whole block as plain text, for pasting into a Discord post or a sheet.
  *
- * Built off the same `signed()` the page draws with, at the same precision
- * (1dp per member, 2dp for every total), so a copy can never quote a different
- * number than the page shows. The `#` headings keep the block's structure once
+ * Built off the same `signed()` and `fmt2()` the page draws with, at the same
+ * precision (1dp per member, 2dp for every total, at most 2dp for the expected
+ * level), so a copy can never quote a different number than the page shows.
+ * The `#` headings keep the block's structure once
  * it is pasted somewhere that isn't this app.
  *
  * A team with no rank baseline has no diff to report and is copied without
@@ -146,7 +160,7 @@ export function formatMvpSummary(stats: MvpStats): string {
     const members = team.members
       .map((m) => `${m.uname} (${m.playedLike.toFixed(1)})`)
       .join(' ');
-    const delta = team.hasRanks ? ` (${signed(team.diff)}, from ${team.expectedRank})` : '';
+    const delta = team.hasRanks ? ` (${signed(team.diff)}, from ${fmt2(team.expectedRank)})` : '';
     lines.push(`${members} = ${team.playedLike.toFixed(2)}${delta}`);
   }
 

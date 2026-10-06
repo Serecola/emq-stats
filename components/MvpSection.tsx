@@ -1,5 +1,5 @@
 import { teamColor } from '@/lib/team-colors';
-import { formatMvpSummary, signed, type MvpStats } from '@/lib/mvp';
+import { fmt2, formatMvpSummary, signed, type MvpStats } from '@/lib/mvp';
 import { CopyMvpButton } from './CopyMvpButton';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -42,7 +42,7 @@ export default function MvpSection({ stats }: { stats: MvpStats }) {
                   <span className={team.diff >= 0 ? 'text-promote' : 'text-taken'}>
                     ({signed(team.diff)}
                   </span>
-                  <span className="text-textDim">, from {team.expectedRank})</span>
+                  <span className="text-textDim">, from {fmt2(team.expectedRank)})</span>
                 </span>
               )}
             </p>

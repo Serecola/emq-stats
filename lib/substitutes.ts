@@ -15,10 +15,11 @@ import type { Team } from './types';
  * guessing; this module is what tells it when to ask and what to suggest.
  *
  * Deliberately pure — no React, no DB — so the same check can run wherever a
- * raw export meets a roster. Detection reads `renames`/`substitutes` only
- * (never the global aliases): it runs in the admin form, which has no access
- * to them, and a name already reconciled either way must not re-trigger the
- * question.
+ * raw export meets a roster. Detection reads only the `renames`/`substitutes`
+ * it is handed: the admin form passes `renames` with the global aliases folded
+ * underneath (withAliases), so a JSON name that is an alias of a roster player
+ * counts as matched and never becomes a question, while a name already
+ * reconciled either way must not re-trigger it.
  */
 export interface SubstituteQuestion {
   /** Normalized key of the changed name — the key both maps are keyed by. */

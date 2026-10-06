@@ -127,6 +127,7 @@ export function formatVnCopySummary(vn: VnPlayStats, guess: GuessRateStats | nul
   }
 
   if (guess) {
+    lines.push('');
     lines.push('RIG DISTRIBUTION');
     const rows = guess.mode === 'Erumode' ? guess.erumodeRows : guess.ngmcRows;
     const sorted = [...rows].sort((a, b) => b.rigCount - a.rigCount || a.uname.localeCompare(b.uname));
@@ -144,5 +145,5 @@ export function formatVnCopySummary(vn: VnPlayStats, guess: GuessRateStats | nul
     }
   }
 
-  return lines.join('\n');
+  return '```\n' + lines.join('\n') + '\n```';
 }

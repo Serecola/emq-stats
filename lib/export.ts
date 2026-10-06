@@ -1,4 +1,5 @@
 import { generateRoundRobin, matchFilesToBracket, type BracketMatchup } from './schedule';
+import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match } from './types';
 
 /**
@@ -165,7 +166,8 @@ function uploadFileName(
 
 export function buildExport(
   matches: Match[],
-  exportedAt: Date = new Date()
+  exportedAt: Date = new Date(),
+  aliases: PlayerAliases = {}
 ): { manifest: ExportManifest; files: ExportFile[] } {
   const files: ExportFile[] = [];
   const tournaments: ExportedMatch[] = [];
@@ -178,11 +180,15 @@ export function buildExport(
     // Which fixture each upload belongs to, resolved the same way the bracket
     // resolves it: an explicit slot wins, the rest are matched by the teams
     // detected in their raw JSON. A file that lands nowhere stays unplaced and
-    // is named after its label instead.
+    // is named after its label instead. The global aliases are folded under the
+    // match's own renames for that detection (a JSON naming a player through
+    // their alias still finds its two teams); the manifest's own `renames`
+    // further down stay raw — aliases are global, never part of a match.
+    const renames = withAliases(match.renames, aliases);
     const fixtures = fixturesBySlot(match);
     const fixtureByFileId = new Map<string, Fixture>();
     for (const [slot, file] of Object.entries(
-      matchFilesToBracket(match.teams, match.files, match.renames, match.substitutes).bySlot
+      matchFilesToBracket(match.teams, match.files, renames, match.substitutes).bySlot
     )) {
       const fixture = fixtures.get(slot);
       if (fixture) fixtureByFileId.set(file.id, fixture);

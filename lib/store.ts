@@ -9,8 +9,9 @@ import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-fi
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
 import { computePlayerSynergy, type PlayerSynergyStats } from './player-synergy';
 import { computePlayerMisses, type PlayerMissStats } from './player-misses';
+import { computePlayerGameRecords, type PlayerGameRecord } from './results';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, recentVnExpectedRanksFor, type PlayerRankRow } from './player-ranks';
-import { canonicalAliases, resolveAliasKey, type PlayerAliases } from './player-aliases';
+import { canonicalAliases, resolveAliasKey, withAliases, type PlayerAliases } from './player-aliases';
 import { withAssumedZeroScores } from './schedule';
 import { norm } from './stats';
 import type {
@@ -43,7 +44,7 @@ interface MatchRow {
   exclude_from_stats?: number | null;
 }
 
-function rowToMatch(row: MatchRow): Match {
+function rowToMatch(row: MatchRow, aliases: PlayerAliases = {}): Match {
   const teams: Team[] = JSON.parse(row.teams);
   const renames: Record<string, string> = row.renames ? JSON.parse(row.renames) : {};
   const substitutes: Record<string, string> = row.substitutes
@@ -64,8 +65,12 @@ function rowToMatch(row: MatchRow): Match {
     // withAssumedZeroScores. Done here, at the single point where stored files
     // become a Match, so every reader agrees (standings, bracket cards, the
     // admin form's own score boxes) and records saved before this rule existed
-    // read the same as fresh ones, with no migration and no re-save.
-    files: withAssumedZeroScores(teams, JSON.parse(row.files), renames, substitutes),
+    // read the same as fresh ones, with no migration and no re-save. Global
+    // aliases are folded under the match's own renames for this resolution —
+    // a file whose raw JSON names its players through an alias still finds
+    // its fixture — while the `renames` field itself stays exactly as stored:
+    // aliases are global and are never baked into a match.
+    files: withAssumedZeroScores(teams, JSON.parse(row.files), withAliases(renames, aliases), substitutes),
     renames,
     substitutes,
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
@@ -179,7 +184,10 @@ export async function listMatches(): Promise<Match[]> {
     const res = await getDb().execute(
       `SELECT ${SELECT_COLUMNS} FROM matches ${MATCH_ORDER_BY}`
     );
-    return res.rows.map((r) => rowToMatch(r as unknown as MatchRow));
+    // Read once here so score completion in rowToMatch can resolve a file
+    // whose JSON only names players through a global alias.
+    const aliases = await listPlayerAliases();
+    return res.rows.map((r) => rowToMatch(r as unknown as MatchRow, aliases));
   });
 }
 
@@ -204,7 +212,7 @@ export async function getMatch(id: string): Promise<Match | null> {
       args: [id],
     });
     if (!res.rows.length) return null;
-    return rowToMatch(res.rows[0] as unknown as MatchRow);
+    return rowToMatch(res.rows[0] as unknown as MatchRow, await listPlayerAliases());
   });
 }
 
@@ -590,6 +598,45 @@ export async function findPlayerMisses(
     );
     if (!matches.length) return null;
     return computePlayerMisses(matches, uname, await listPlayerAliases());
+  });
+}
+
+/**
+ * One player's win / tie / loss over a slice of tournaments under `filter` —
+ * the input to the player page's Winrate card, and the same shape of read as
+ * `findPlayerMisses` above.
+ *
+ * Scoped to `matchIds` for the same reason: the page shows one slice of a
+ * player's history at a time (see StatsRange), so a "last 5 of 12" page can't
+ * report a career-long record. Cached per player + filter + that exact set, so
+ * the Recent / All-Time switch doesn't re-walk every raw export on each render.
+ *
+ * Per *game*, not per tournament — `computePlayerGameRecords` credits each game
+ * a player was actually in — and never null: a player with no scored game in
+ * the slice simply comes back with zeros, which `winRatePct` reports as a dash.
+ */
+export async function findPlayerGameRecord(
+  uname: string,
+  filter: MatchFilter,
+  matchIds: string[]
+): Promise<PlayerGameRecord> {
+  await ensureSchema();
+  const aliases = await listPlayerAliases();
+  const key = resolveAliasKey(uname, aliases);
+  const scope = matchIds.join(',');
+  return cached(`player-game-record:${filter.mode}:${filter.submode}:${key}:${scope}`, async () => {
+    const wanted = new Set(matchIds);
+    const matches = applyMatchFilter(statsMatches(await listMatches()), filter).filter((m) =>
+      wanted.has(m.id)
+    );
+    const record: PlayerGameRecord = { wins: 0, ties: 0, losses: 0, games: 0 };
+    for (const inMatch of Object.values(computePlayerGameRecords(matches, aliases)[key] ?? {})) {
+      record.wins += inMatch.wins;
+      record.ties += inMatch.ties;
+      record.losses += inMatch.losses;
+      record.games += inMatch.games;
+    }
+    return record;
   });
 }
 

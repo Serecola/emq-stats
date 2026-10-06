@@ -17,6 +17,7 @@ import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu';
 import type { PlayerTagOverrides } from '@/lib/player-tags';
 import { SPLIT_TYPES, type ErumodeSplitStats, type PlayerSummary } from '@/lib/player-stats';
 import type { PlayerRankRow } from '@/lib/player-ranks';
+import { MIN_GAMES_FOR_WINRATE } from '@/lib/results';
 import type { Mode, Submode } from '@/lib/types';
 
 /**
@@ -306,8 +307,9 @@ export default function PlayerListTable({
       key: 'winRate',
       label: 'WR',
       // Stated on the header so the scoring doesn't have to be guessed at: a win
-      // is a point, a tie half, a loss nothing, over the games played.
-      title: `Winrate over the games they played — 1 point a win, 0.5 a tie, 0 a loss (${mode} ${submode}, the range above decides how many)`,
+      // is a point, a tie half, a loss nothing, over the games played — and the
+      // floor below which the figure isn't quoted at all.
+      title: `Winrate over the games they played — 1 point a win, 0.5 a tie, 0 a loss (${mode} ${submode}, the range above decides how many); needs ${MIN_GAMES_FOR_WINRATE}+ games, so a shorter range shows —`,
       accessor: (r) => r.rank?.winRate ?? missing(),
       cellStyle: (r) => percentHeat(r.rank?.winRate ?? null),
       render: (r) =>

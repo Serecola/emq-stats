@@ -14,7 +14,12 @@ import {
   type BracketAssignment,
   type StatsScope,
 } from '@/lib/schedule';
-import { computeMatchResults } from '@/lib/results';
+import {
+  computeMatchResults,
+  computePlayerGameRecords,
+  winRatePct,
+  type PlayerGameRecord,
+} from '@/lib/results';
 import { computeMvpStats, type MvpStats } from '@/lib/mvp';
 import { computeSynergyStats, type SynergyStats } from '@/lib/synergy';
 import { computeVnPlays, formatVnCopySummary, type VnPlayStats } from '@/lib/vn-plays';
@@ -88,7 +93,10 @@ export default async function MatchPage({
   // and RoundRobinGrid is a client component: whatever it receives is
   // serialized into the page. It only renders scores, so only scores (and
   // labels) are handed over, keeping ~2 MB of raw exports out of the payload.
-  const assignment = matchFilesToBracket(match.teams, match.files, match.renames, match.substitutes);
+  // The alias-folded `renames` (not match.renames) drive the detection, so a
+  // file whose JSON names its players through a global alias still resolves
+  // to its two teams — the same attach the stats tables above credit.
+  const assignment = matchFilesToBracket(match.teams, match.files, renames, match.substitutes);
   const bracketFiles = summarizeBracketFiles(assignment);
 
   // Stats scope from the round/game selector (see MatchStatsScope + the game
@@ -103,7 +111,7 @@ export default async function MatchPage({
   const scopedFiles = filesInStatsScope(
     match.teams,
     match.files,
-    match.renames,
+    renames,
     scope,
     match.substitutes
   );
@@ -150,6 +158,23 @@ export default async function MatchPage({
     } catch (err) {
       mvpError = err;
     }
+  }
+
+  // How this tournament's games went for each player — the per-game win rate
+  // the Guess Rate table shows a WR column for. Read from `scopedMatch`, so it
+  // narrows with the round / game filter like every other figure on the page,
+  // and passed through the alias-folded `renames` so a player who appears under
+  // an old name here is the same row as their canonical one. A thrown read
+  // leaves the map empty and the column prints dashes, rather than taking the
+  // page down over one extra figure.
+  const winRates: Record<string, { record: PlayerGameRecord; winRate: number | null }> = {};
+  try {
+    for (const [key, perMatch] of Object.entries(computePlayerGameRecords([{ ...scopedMatch, renames }]))) {
+      const record = perMatch[match.id];
+      if (record) winRates[key] = { record, winRate: winRatePct(record) };
+    }
+  } catch (err) {
+    // Left empty on purpose — see above.
   }
 
   // Team synergy (who lands whose list) reads the same scoped files as the
@@ -291,6 +316,7 @@ export default async function MatchPage({
             teams={match.teams}
             playerRanks={match.playerRanks}
             playerTags={playerTags}
+            winRates={winRates}
           />
         ) : null}
 

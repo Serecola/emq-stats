@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
 import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
+import { MIN_GAMES_FOR_WINRATE, type PlayerGameRecord } from '@/lib/results';
 import { teamColor } from '@/lib/team-colors';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import ColumnVisibilityMenu from './ColumnVisibilityMenu';
@@ -226,12 +227,20 @@ export default function GuessRateTable({
   teams,
   playerRanks,
   playerTags,
+  winRates = {},
 }: {
   stats: GuessRateStats;
   teams: Team[];
   playerRanks: Record<string, number>;
   /** Global Player/Bot tags — usernames tagged Bot get a pill by their name. */
   playerTags?: Record<string, PlayerTag>;
+  /**
+   * This tournament's per-game record per player, keyed by normalized username
+   * — computed by the page from the same scoped files the rest of the tables
+   * read (see computePlayerGameRecords). Absent or missing an entry prints a
+   * dash, so the table needs no data of its own to draw the column.
+   */
+  winRates?: Record<string, { record: PlayerGameRecord; winRate: number | null }>;
 }) {
   // Tier = ordinal position within the player's team (1st listed = T1, 2nd
   // = T2, ...), derived purely from roster order — never stored. Rank =
@@ -356,6 +365,32 @@ export default function GuessRateTable({
     accessor: (r) => r.games,
     render: (r) => r.games,
   });
+  // Win rate over the games they actually played in this tournament — the same
+  // figure the players list and the Player Manager quote, read from the record
+  // the page computed for this page's scope. Per *game* (1 point a win, 0.5 a
+  // tie, 0 a loss), never per tournament, and blank until they've played
+  // MIN_GAMES_FOR_WINRATE of them so a one-game 100% can't sit in the table.
+  const winRateColumn = <T extends { uname: string }>(): Column<T> => ({
+    key: 'winRate',
+    label: 'WR',
+    title: `Winrate over the games they played in this tournament — 1 point a win, 0.5 a tie, 0 a loss, shown once they've played ${MIN_GAMES_FOR_WINRATE}+ games (the round / game filter decides how many count)`,
+    // Nulls sort as -Infinity so "not enough games" never outranks a real rate.
+    accessor: (r) => winRates[norm(r.uname)]?.winRate ?? -Infinity,
+    render: (r) => {
+      const wr = winRates[norm(r.uname)];
+      if (!wr || wr.winRate === null) return <span className="text-textDim">—</span>;
+      return (
+        <span
+          className="text-textSub"
+          title={`${wr.record.wins}W ${wr.record.ties}T ${wr.record.losses}L over ${wr.record.games} game${
+            wr.record.games !== 1 ? 's' : ''
+          }`}
+        >
+          {pct(wr.winRate)}
+        </span>
+      );
+    },
+  });
 
   if (stats.mode === 'Erumode') {
     const columns: Column<ErumodeGuessRow>[] = [
@@ -388,6 +423,7 @@ export default function GuessRateTable({
       rigCountColumn<ErumodeGuessRow>(),
       songsColumn<ErumodeGuessRow>(),
       gamesColumn<ErumodeGuessRow>(),
+      winRateColumn<ErumodeGuessRow>(),
     ];
     return (
       <GenericSortableTable
@@ -454,6 +490,7 @@ export default function GuessRateTable({
     { key: 'correct', label: 'Correct', accessor: (r) => r.correct, render: (r) => r.correct },
     songsColumn<NgmcGuessRow>(),
     gamesColumn<NgmcGuessRow>(),
+    winRateColumn<NgmcGuessRow>(),
   ];
   return (
     <GenericSortableTable

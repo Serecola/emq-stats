@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildExport, exportFilename, slug } from '@/lib/export';
 import { hasAdminSession } from '@/lib/admin-session';
-import { getMatch, listMatches } from '@/lib/store';
+import { getMatch, listMatches, listPlayerAliases } from '@/lib/store';
 import { createZip } from '@/lib/zip';
 import type { Match } from '@/lib/types';
 
@@ -37,7 +37,9 @@ export async function GET(req: NextRequest) {
   }
 
   const at = new Date();
-  const { manifest, files } = buildExport(matches, at);
+  // Global aliases folded for fixture detection only — a manifest entry is
+  // named after the fixture its JSON's two teams resolve to (see buildExport).
+  const { manifest, files } = buildExport(matches, at, await listPlayerAliases());
 
   // `?format=json` skips the archive: the same manifest with every export
   // inlined under its path, for scripting or a diff that shouldn't have to

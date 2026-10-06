@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { findPlayerStats, findPlayerMisses, findPlayerSynergy, listPlayerTags } from '@/lib/store';
+import { findPlayerStats, findPlayerMisses, findPlayerSynergy, findPlayerGameRecord, listPlayerTags } from '@/lib/store';
+import { MIN_GAMES_FOR_WINRATE, winRatePct, type PlayerGameRecord } from '@/lib/results';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import ModeToggle from '@/components/ModeToggle';
 import StatsRangeToggle from '@/components/StatsRangeToggle';
@@ -145,6 +146,22 @@ export default async function PlayerPage({
     synergyError = err;
   }
 
+  // How the games in view actually went for this player — per game, never per
+  // tournament (see computePlayerGameRecords), and scoped to exactly the
+  // tournaments the stat cards and the history table below are showing, so the
+  // Recent / All-Time switch moves it with everything else. Same shape of read
+  // as the Synergy and Most Missed sections, and computed here for the same
+  // reason: only errors raised in this body are catchable.
+  let record: PlayerGameRecord | null = null;
+  try {
+    record = await findPlayerGameRecord(player.uname, filter, view.entries.map((e) => e.matchId));
+  } catch {
+    // Left null on purpose — the card below then prints a dash, rather than the
+    // page failing over one extra figure (the same trade the match page's WR
+    // column makes).
+  }
+  const winRate = winRatePct(record ?? undefined);
+
   // What they keep missing: the VNs they can't name (Mst answers) and the
   // artists they can't place (A answers) — over exactly the same tournaments
   // in view, so it narrows with the Recent / All-Time switch and the mode chips
@@ -206,9 +223,10 @@ export default async function PlayerPage({
       {showErumode && view.erumode.matchesPlayed > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Guess Rate" value={pct(view.erumode.overallGuessRate)} />
             <StatCard label="Songs" value={String(view.erumode.totalSongs)} />
+            {winRateCard(record, winRate)}
           </div>
           <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
         </section>
@@ -217,7 +235,7 @@ export default async function PlayerPage({
       {showNgmc && view.ngmc.matchesPlayed > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">NGMC</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <StatCard label="Guess Rate" value={pct(view.ngmc.overallGuessRate)} />
             <StatCard label="Songs" value={String(view.ngmc.totalSongs)} />
             <StatCard
@@ -240,6 +258,7 @@ export default async function PlayerPage({
               }
               accent="blocked"
             />
+            {winRateCard(record, winRate)}
           </div>
           <MatchHistoryTable entries={ngmcEntries} showAttacksBlocks />
         </section>
@@ -463,14 +482,20 @@ function MatchHistoryTable({
 function StatCard({
   label,
   value,
+  hint,
+  title,
   accent,
 }: {
   label: string;
   value: React.ReactNode;
+  /** Small line under the value — the record behind a rate, or why it's blank. */
+  hint?: React.ReactNode;
+  /** Hover title for the whole card, for a figure the label can't spell out. */
+  title?: string;
   accent?: 'taken' | 'blocked';
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+    <div className="rounded-lg border border-border bg-surface px-3 py-2.5" title={title}>
       <div className="text-xs text-textMuted">{label}</div>
       <div
         className={`mt-0.5 text-lg font-semibold ${
@@ -479,6 +504,38 @@ function StatCard({
       >
         {value}
       </div>
+      {hint && <div className="mt-0.5 text-[0.65rem] text-textDim">{hint}</div>}
     </div>
+  );
+}
+
+/**
+ * The Winrate card: how the games in view went, counted per *game* — a win is a
+ * point, a tie half, a loss nothing — which is the figure the players list and
+ * the Player Manager already quote, over the same range (so the Recent /
+ * All-Time switch moves it like every other card).
+ *
+ * Below MIN_GAMES_FOR_WINRATE games the figure is a dash rather than a number
+ * too small to mean anything, and the hint says how many games are actually
+ * there — a blank that explains itself instead of one that reads as "no data".
+ */
+function winRateCard(record: PlayerGameRecord | null, winRate: number | null) {
+  // The zeros are only ever read when there's nothing to quote (no scored game
+  // in view), which is exactly what the hint says.
+  const rec = record ?? { wins: 0, ties: 0, losses: 0, games: 0 };
+  const games = `${rec.games} game${rec.games !== 1 ? 's' : ''}`;
+  return (
+    <StatCard
+      label="Winrate"
+      title="Winrate over the games played in view — 1 point a win, 0.5 a tie, 0 a loss"
+      value={winRate === null ? <span className="text-textDim">—</span> : pct(winRate)}
+      hint={
+        rec.games === 0
+          ? 'no scored games in view'
+          : winRate === null
+            ? `${games} played · ${MIN_GAMES_FOR_WINRATE} needed`
+            : `${rec.wins}W ${rec.ties}T ${rec.losses}L · ${games}`
+      }
+    />
   );
 }

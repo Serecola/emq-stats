@@ -1,5 +1,5 @@
 import MatchForm from '@/components/MatchForm';
-import { listSetRanks, listRecentExpectedRanks, listRecentVnExpectedRanks } from '@/lib/store';
+import { listSetRanks, listRecentExpectedRanks, listRecentVnExpectedRanks, listPlayerAliases } from '@/lib/store';
 import { requireAdminPage } from '@/lib/admin-session';
 
 export default async function NewMatchPage() {
@@ -13,11 +13,14 @@ export default async function NewMatchPage() {
   const savedRanks = await listSetRanks();
   const expectedRanks = await listRecentExpectedRanks();
   const vnExpectedRanks = await listRecentVnExpectedRanks();
+  // Global aliases: an upload that names a roster player through their alias
+  // attaches to that main name in the form automatically — see MatchForm.
+  const aliases = await listPlayerAliases();
 
   return (
     <div className="max-w-3xl space-y-4">
       <h1 className="text-lg font-semibold">New tournament</h1>
-      <MatchForm savedRanks={savedRanks} expectedRanks={expectedRanks} vnExpectedRanks={vnExpectedRanks} />
+      <MatchForm savedRanks={savedRanks} expectedRanks={expectedRanks} vnExpectedRanks={vnExpectedRanks} aliases={aliases} />
     </div>
   );
 }

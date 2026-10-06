@@ -7,6 +7,7 @@ import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerRankInput from '@/components/PlayerRankInput';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import type { PlayerRankRow } from '@/lib/player-ranks';
+import { MIN_GAMES_FOR_WINRATE } from '@/lib/results';
 import type { Mode, Submode } from '@/lib/types';
 
 interface Column {
@@ -101,8 +102,9 @@ export default function PlayerRankTable({
       key: 'winRate',
       label: 'Winrate',
       // Stated on the header so the scoring doesn't have to be guessed at: a win
-      // is a point, a tie half, a loss nothing, over the games played.
-      title: `Winrate over the games they played — 1 point a win, 0.5 a tie, 0 a loss (${mode} ${submode}, the range above decides how many)`,
+      // is a point, a tie half, a loss nothing, over the games played — and the
+      // floor below which the figure isn't quoted at all.
+      title: `Winrate over the games they played — 1 point a win, 0.5 a tie, 0 a loss (${mode} ${submode}, the range above decides how many); needs ${MIN_GAMES_FOR_WINRATE}+ games, so a shorter range shows —`,
       accessor: (r) => r.winRate ?? (sortDir === 'asc' ? Infinity : -Infinity),
       cellStyle: (r) => percentHeat(r.winRate),
       render: (r) =>
