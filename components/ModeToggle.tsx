@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { MODES } from '@/lib/types';
+import { MODES, type Mode } from '@/lib/types';
 import {
   matchFilterQuery,
   submodeOptions,
@@ -18,14 +18,20 @@ const chipClass = (isActive: boolean): string =>
 /**
  * Segmented toggle for the tournament lists.
  *
- * By default it is two-level: mode first (Erumode / NGMC, in that order), then
- * that mode's own sub-modes — Erumode into Normal / Random / Balanced / No Vocal,
- * NGMC into Normal / Random. The sub-mode row only appears once a mode is picked
- * and offers "All <mode>" unless `includeAllSubmodes` is false.
+ * By default it is two-level: mode first (Erumode / NGMC / Custom, in that
+ * order), then that mode's own sub-modes — Erumode into Normal / Random /
+ * Balanced / No Vocal, NGMC into Normal / Random, and Custom into nothing (it
+ * has no sub-modes, so it never gets a sub-mode row). The sub-mode row only
+ * appears once a mode with sub-modes is picked and offers "All <mode>" unless
+ * `includeAllSubmodes` is false.
  *
  * Setting `includeAll={false}` and `includeAllSubmodes={false}` drops all catch-all
  * chips ("All", "All Erumode", "All NGMC"), leaving only concrete modes and concrete
  * sub-modes — used by `/admin/players` and `/players`.
+ *
+ * `modes` narrows the mode row itself (default: every mode in MODES).
+ * `/admin/players` passes LADDER_MODES, so Custom — which can hold no rank —
+ * is not offered there; every other view keeps the full list.
  *
  * Backed by `?mode=`/`?submode=` query params through plain <Link>s, so the
  * active filter is resolved server-side (via `searchParams`), is
@@ -42,6 +48,7 @@ export default function ModeToggle({
   includeAll = true,
   includeAllSubmodes = true,
   extraQuery = '',
+  modes = MODES,
 }: {
   active: MatchFilter;
   basePath: string;
@@ -49,13 +56,18 @@ export default function ModeToggle({
   includeAll?: boolean;
   includeAllSubmodes?: boolean;
   extraQuery?: string;
+  // Which gamemodes the mode row offers — every mode everywhere by default.
+  // The Player Manager passes LADDER_MODES instead: Custom has no sub-mode
+  // bucket to store a rank in, so it is never a ladder that view can offer
+  // (see lib/types.ts).
+  modes?: readonly Mode[];
 }) {
-  const modes: { label: string; value: ModeFilter }[] = [
+  const modeChips: { label: string; value: ModeFilter }[] = [
     ...(includeAll ? [{ label: allLabel, value: 'all' as ModeFilter }] : []),
-    ...MODES.map((m) => ({ label: m, value: m })),
+    ...modes.map((m) => ({ label: m, value: m })),
   ];
   const submodes: { label: string; value: SubmodeFilter }[] =
-    active.mode === 'all'
+    active.mode === 'all' || submodeOptions(active.mode).length === 0
       ? []
       : [
           ...(includeAllSubmodes
@@ -74,12 +86,14 @@ export default function ModeToggle({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        {modes.map((m) => {
-          // When clicking a mode chip:
-          // If includeAllSubmodes is false, default to the first submode of that mode.
+        {modeChips.map((m) => {
+          // When clicking a mode chip with includeAllSubmodes off, default to
+          // that mode's first concrete sub-mode. Custom has none, so it falls
+          // back to 'all' — which matchFilterQuery serializes as no submode
+          // param at all, never a literal "submode=undefined".
           const modeHref =
             !includeAllSubmodes && m.value !== 'all'
-              ? matchFilterQuery({ mode: m.value, submode: submodeOptions(m.value)[0] })
+              ? matchFilterQuery({ mode: m.value, submode: submodeOptions(m.value)[0] ?? 'all' })
               : matchFilterQuery({ mode: m.value, submode: 'all' });
 
           return (

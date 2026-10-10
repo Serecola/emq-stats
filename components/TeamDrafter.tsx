@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { parsePlayerList, parseRankList, roundToTenth } from '@/lib/teams';
 import { balanceTeams, mergeHiddenRanks, type DraftPlayer, type TeamDraft } from '@/lib/balance';
-import { VALID_TEAM_COUNTS } from '@/lib/schedule';
+import { VALID_TEAM_COUNTS, validTeamCountsPhrase } from '@/lib/format';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -203,7 +203,9 @@ export default function TeamDrafter({
   }, [counts, rankSource]);
 
   // Offer only the team sizes that actually split this roster into a legal
-  // tournament (4 or 6 teams), so a generated draft always fits the bracket.
+  // tournament (3, 4 or 6 teams — see lib/format.ts), so a generated draft
+  // always fits the bracket: nine ranked players offer size 3, i.e. the
+  // three-teams-of-three 3v3v3 format.
   const sizeOptions = useMemo(() => {
     const sizes: number[] = [];
     for (let size = 2; size <= ranked.length; size++) {
@@ -235,7 +237,7 @@ export default function TeamDrafter({
       setDrafts([]);
       setError(
         `${ranked.length} ranked player${ranked.length !== 1 ? 's' : ''} can't be split into ` +
-          `${VALID_TEAM_COUNTS.join(' or ')} equal teams — a tournament needs exactly 4 or 6 teams.`
+          `${validTeamCountsPhrase()} equal teams — a tournament needs exactly ${validTeamCountsPhrase()} teams.`
       );
       return;
     }

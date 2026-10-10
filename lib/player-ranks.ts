@@ -156,14 +156,55 @@ export function computePlayerRankRows(
 }
 
 /**
+ * The (mode, sub-mode) bucket every rank read for a Custom tournament comes
+ * from. Custom has no ladder of its own: it has no sub-mode to store one
+ * under (the Set Rank endpoint rejects every sub-mode for Custom — see
+ * app/api/admin/player-ranks/route.ts), it is never stats-eligible, and the
+ * Player Manager doesn't even offer it as a selection (LADDER_MODES in
+ * lib/types.ts). So rather than grading a Custom roster against nothing, every
+ * rank read for Custom resolves to Erumode Normal — the graded ladder closest
+ * to a grab-bag roster.
+ */
+const CUSTOM_RANKS_BUCKET = { mode: 'Erumode', submode: 'Normal' } as const;
+
+/**
+ * Which (mode, sub-mode) rank bucket a read for `mode`/`submode` resolves to:
+ * exactly what was asked for, except for Custom, which lands on Erumode
+ * Normal (see CUSTOM_RANKS_BUCKET). Every rank lookup that should follow that
+ * default goes through here, so the tables and the label naming them can't
+ * drift apart.
+ */
+export function ranksBucketFor(
+  mode: string,
+  submode: string
+): { mode: string; submode: string } {
+  return mode === 'Custom' ? CUSTOM_RANKS_BUCKET : { mode, submode };
+}
+
+/**
+ * The readable name of that bucket — what the autodrafter's copy attributes
+ * the ranks it is using to. Identical to `` `${mode} ${submode}` `` (or just
+ * `mode` when there is no sub-mode) in every case but Custom, which reads
+ * "Erumode Normal" because that is the ladder its ranks actually came from.
+ */
+export function ranksLabelFor(mode: string, submode: string): string {
+  const { mode: bucketMode, submode: bucketSubmode } = ranksBucketFor(mode, submode);
+  return bucketSubmode ? `${bucketMode} ${bucketSubmode}` : bucketMode;
+}
+
+/**
  * The Set Ranks for one gamemode + sub-mode as a normalized-name -> rank
  * map — exactly the shape the autodrafter balances with (and that pasted
  * `ranks.txt` tables parse into). Returns null when nothing has been ranked
  * for that combination yet, so callers can say "no saved ranks" rather than
  * build an empty table.
+ *
+ * The bucket is resolved through `ranksBucketFor`, so a Custom tournament
+ * reads the Erumode Normal ladder rather than nothing.
  */
 export function savedRanksFor(setRanks: SetRanks, mode: string, submode: string): Record<string, number> | null {
-  const ranks = setRanks[mode]?.[submode];
+  const { mode: bucketMode, submode: bucketSubmode } = ranksBucketFor(mode, submode);
+  const ranks = setRanks[bucketMode]?.[bucketSubmode];
   return ranks && Object.keys(ranks).length > 0 ? ranks : null;
 }
 

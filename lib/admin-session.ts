@@ -39,7 +39,9 @@ export async function hasAdminSession(): Promise<boolean> {
  * The path goes in unprefixed: `redirect()` is basePath-aware, so passing an
  * already-prefixed path doubles it (`/emq-stats/emq-stats/admin/login`) and
  * lands on nothing. That is the opposite of the hand-built URLs elsewhere,
- * which do need `withBasePath()` — see lib/base-path.ts.
+ * which do need `withBasePath()` — see lib/base-path.ts. With basePath empty
+ * (the current subdomain-at-root deployment) the two happen to agree, but the
+ * rule matters the moment a basePath comes back.
  */
 export async function requireAdminPage(from: string): Promise<void> {
   if (await hasAdminSession()) return;

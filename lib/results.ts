@@ -1,4 +1,5 @@
-import { fileParticipants, fileRosterMembers, norm } from './stats';
+﻿import { fileParticipants, fileRosterMembers, norm } from './stats';
+import { isThreeWayFormat, placementPoints } from './format';
 import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match, MatchFile, Team } from './types';
 
@@ -14,23 +15,60 @@ export interface GameResult {
   isTie: boolean; // every scored participant tied for first
 }
 
+/**
+ * Which standings rules a tournament is ranked by. Decided once, from the
+ * team count (see lib/format.ts) 窶・never re-inferred from the games:
+ *
+ *   roundRobin 窶・4 or 6 teams, ranked on wins with a head-to-head TB
+ *   threeWay   窶・3 teams, five 3v3v3 rounds, ranked on summed placement
+ *                points (3 / 2 / 1) with the number of rounds won as TB
+ */
+export type StandingsFormat = 'roundRobin' | 'threeWay';
+
 export interface TeamResult {
   rank: number;
   teamIndex: number;
   label: string;
   members: Team;
+  /**
+   * Finishes by place across every game, competition-ranked (teams level on
+   * score share a place). `firsts` is the 3v3v3 tiebreak and the number its
+   * podium shows; the round-robin table doesn't read any of the three 窶・
+   * there a win is already a 1st and the columns are W-L-T.
+   */
+  firsts: number;
+  seconds: number;
+  thirds: number;
+  /**
+   * Round robin: games won / lost / tied. 3v3v3: rounds finished 1st / 3rd /
+   * 2nd 窶・the place counts, carried in the same fields so anything showing
+   * a record shows "how the rounds went" for either format.
+   */
   matchWins: number;
   matchLosses: number;
   matchTies: number;
-  matchPoints: number; // win = 1, tie = 0.5, loss = 0 — the primary sort key
-  tb: number; // count of game wins against opponents tied on matchPoints
+  // Round robin: win = 1, tie = 0.5, loss = 0 窶・the primary sort key.
+  // 3v3v3: the team's total placement points (equal to `pts`), same role.
+  matchPoints: number;
+  // Round robin: count of game wins against opponents tied on matchPoints.
+  // 3v3v3: how many rounds the team won (finished 1st) 窶・the tiebreak on
+  // equal points.
+  tb: number;
   setWins: number;
   setLosses: number;
   setTies: number;
-  pts: number; // sum of this team's own entered scores across every game
+  // Round robin: sum of this team's own entered scores across every game.
+  // 3v3v3: total points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd, summed
+  // over the five rounds (and displayed as the Pts column).
+  pts: number;
+  // 3v3v3: the raw sum of each team's own entered scores across every round.
+  // Not a sort key on its own — always shadowed by Points — but the tiebreak
+  // after points, so the team that also has more raw score finishes higher.
+  totalScore: number;
 }
 
 export interface MatchResults {
+  format: StandingsFormat; // which rules produced the rankings below
   rankings: TeamResult[]; // sorted, rank 1..N
   podium: TeamResult[]; // top 3 (or fewer, if <3 teams have scores)
   games: GameResult[]; // every scored file, in file order
@@ -65,22 +103,28 @@ export function computeGameResult(file: MatchFile, teams: Team[]): GameResult | 
 }
 
 /**
- * Turns per-game team scores into full tournament standings.
- *
- * Every scored file is its own independent match — there is no grouping
- * of repeat matchups into a single best-of-N result. "Match" and "Set"
- * are therefore the same underlying per-game record; both are exposed
- * since the standings table displays them as separate columns.
- *
- * Ranking priority:
  *   1. matchPoints (win = 1, tie = 0.5, loss = 0)
  *   2. TB — game wins against opponents who share the same matchPoints total
  *   3. Set Wins
  *   4. Set Ties
+ *
  *   5. Pts — the sum of each team's own entered scores across every game
+ *
+ * 3v3v3 (3 teams, five rounds) —
+ *
+ *   1. Points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd in each round, summed
+ *   2. Total Score — raw sum of each team's own entered scores across every round
+ *   3. TB — how many rounds the team won (a 1st-place finish)
+ *   4. Seconds, then the team's name
+ *
+ * so `matchPoints` and `pts` both carry that total and `tb` the 1sts count.
+ * Places are competition ranks: teams level on score share a place, so a tie
+ * for 1st pays 3 to both (and the skipped place leaves the third team on its
+ * 3rd-place 1).
  */
 export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): MatchResults {
   const teams = match.teams;
+  const format: StandingsFormat = isThreeWayFormat(teams.length) ? 'threeWay' : 'roundRobin';
   const games = match.files
     .map((f) => computeGameResult(f, teams))
     .filter((g): g is GameResult => g !== null);
@@ -89,16 +133,36 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
   const losses: Record<number, number> = {};
   const ties: Record<number, number> = {};
   const totalScore: Record<number, number> = {};
+  const firsts: Record<number, number> = {};
+  const seconds: Record<number, number> = {};
+  const thirds: Record<number, number> = {};
+  const points: Record<number, number> = {}; // 3v3v3 placement points
   teams.forEach((_, i) => {
     wins[i] = 0;
     losses[i] = 0;
     ties[i] = 0;
     totalScore[i] = 0;
+    firsts[i] = 0;
+    seconds[i] = 0;
+    thirds[i] = 0;
+    points[i] = 0;
   });
 
   for (const game of games) {
+    // Competition ranking by score: a team's place is 1 plus the number of
+    // teams that scored strictly higher, so level scores share a place and
+    // the next one is skipped.
+    const placeOf = (e: { score: number }) =>
+      1 + game.entries.filter((other) => other.score > e.score).length;
+
     for (const e of game.entries) {
       totalScore[e.teamIndex] += e.score;
+      const place = placeOf(e);
+      if (place === 1) firsts[e.teamIndex]++;
+      else if (place === 2) seconds[e.teamIndex]++;
+      else if (place === 3) thirds[e.teamIndex]++;
+      if (format === 'threeWay') points[e.teamIndex] += placementPoints(place);
+
       if (game.isTie) {
         ties[e.teamIndex]++;
       } else if (e.isWinner) {
@@ -111,22 +175,31 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
 
   const matchPoints: Record<number, number> = {};
   teams.forEach((_, i) => {
-    matchPoints[i] = wins[i] * 1 + ties[i] * 0.5;
+    // The round robins rank on wins; the 3v3v3 format ranks on the points
+    // its rounds pay out 窶・the same total the table's Pts column shows.
+    matchPoints[i] = format === 'threeWay' ? points[i] : wins[i] * 1 + ties[i] * 0.5;
   });
 
-  // TB: game wins against opponents whose overall matchPoints match ours —
-  // counted per game (so beating the same tied opponent twice counts
-  // twice), not deduplicated per opponent.
   const tb: Record<number, number> = {};
   teams.forEach((_, i) => (tb[i] = 0));
-  for (const game of games) {
-    if (game.isTie) continue;
-    const winner = game.entries.find((e) => e.isWinner);
-    if (!winner) continue;
-    for (const e of game.entries) {
-      if (e.teamIndex === winner.teamIndex) continue;
-      if (matchPoints[e.teamIndex] === matchPoints[winner.teamIndex]) {
-        tb[winner.teamIndex]++;
+  if (format === 'threeWay') {
+    // TB: rounds the team won 窶・the count that separates teams level on
+    // points. A round two teams share at the top counts for each of them:
+    // both finished 1st and both took the 3 for it.
+    teams.forEach((_, i) => (tb[i] = firsts[i]));
+  } else {
+    // TB: game wins against opponents whose overall matchPoints match ours 窶・
+    // counted per game (so beating the same tied opponent twice counts
+    // twice), not deduplicated per opponent.
+    for (const game of games) {
+      if (game.isTie) continue;
+      const winner = game.entries.find((e) => e.isWinner);
+      if (!winner) continue;
+      for (const e of game.entries) {
+        if (e.teamIndex === winner.teamIndex) continue;
+        if (matchPoints[e.teamIndex] === matchPoints[winner.teamIndex]) {
+          tb[winner.teamIndex]++;
+        }
       }
     }
   }
@@ -136,29 +209,45 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
     teamIndex,
     label: team[0],
     members: team,
-    matchWins: wins[teamIndex],
-    matchLosses: losses[teamIndex],
-    matchTies: ties[teamIndex],
+    firsts: firsts[teamIndex],
+    seconds: seconds[teamIndex],
+    thirds: thirds[teamIndex],
+    matchWins: format === 'threeWay' ? firsts[teamIndex] : wins[teamIndex],
+    matchLosses: format === 'threeWay' ? thirds[teamIndex] : losses[teamIndex],
+    matchTies: format === 'threeWay' ? seconds[teamIndex] : ties[teamIndex],
     matchPoints: matchPoints[teamIndex],
     tb: tb[teamIndex],
-    setWins: wins[teamIndex],
-    setLosses: losses[teamIndex],
-    setTies: ties[teamIndex],
-    pts: totalScore[teamIndex],
+    setWins: format === 'threeWay' ? firsts[teamIndex] : wins[teamIndex],
+    setLosses: format === 'threeWay' ? thirds[teamIndex] : losses[teamIndex],
+    setTies: format === 'threeWay' ? seconds[teamIndex] : ties[teamIndex],
+    pts: format === 'threeWay' ? points[teamIndex] : totalScore[teamIndex],
+    totalScore: totalScore[teamIndex],
   }));
 
-  rankings.sort(
-    (a, b) =>
-      b.matchPoints - a.matchPoints ||
-      b.tb - a.tb ||
-      b.setWins - a.setWins ||
-      b.setTies - a.setTies ||
-      b.pts - a.pts ||
-      a.label.localeCompare(b.label)
-  );
+  if (format === 'threeWay') {
+    rankings.sort(
+      (a, b) =>
+        b.matchPoints - a.matchPoints ||
+        b.totalScore - a.totalScore ||
+        b.tb - a.tb ||
+        b.seconds - a.seconds ||
+        a.label.localeCompare(b.label)
+    );
+  } else {
+    rankings.sort(
+      (a, b) =>
+        b.matchPoints - a.matchPoints ||
+        b.tb - a.tb ||
+        b.setWins - a.setWins ||
+        b.setTies - a.setTies ||
+        b.pts - a.pts ||
+        a.label.localeCompare(b.label)
+    );
+  }
   rankings.forEach((r, i) => (r.rank = i + 1));
 
   return {
+    format,
     rankings,
     podium: rankings.slice(0, 3),
     games,
@@ -190,9 +279,9 @@ export interface PlayerGameRecord {
  *   stops winning.
  * - **Per player, not per team.** A team member who didn't play that game isn't
  *   in the file, so they neither win nor lose it (see fileRosterMembers in
- *   lib/stats.ts — the same per-file participation the bracket itself uses).
- * - **Only decided games.** A file with no result — unscored, or a single score
- *   where the other side couldn't be pinned to a fixture — contributes nothing,
+ *   lib/stats.ts 窶・the same per-file participation the bracket itself uses).
+ * - **Only decided games.** A file with no result 窶・unscored, or a single score
+ *   where the other side couldn't be pinned to a fixture 窶・contributes nothing,
  *   rather than counting as a loss for whoever was in it.
  *
  * Global aliases ride the same name-resolution path the per-match renames
@@ -201,7 +290,7 @@ export interface PlayerGameRecord {
  * Substitutes are credited too, under their *own* name: they were in the
  * room and the game's result is theirs to carry, while the roster player
  * they stood in for is (correctly) not present and therefore claims
- * nothing — exactly the "per player, not per team" rule above, applied to
+ * nothing 窶・exactly the "per player, not per team" rule above, applied to
  * the slot being filled by someone else. A substitute whose key is itself a
  * roster member (a mis-recorded entry) skips this branch, since the roster
  * loop above already credited them for the team they actually played on.
@@ -220,7 +309,7 @@ export function computePlayerGameRecords(
       const result = computeGameResult(file, match.teams);
       if (!result) continue;
       const present = fileRosterMembers(file, match.teams, renames);
-      // Who was in the room at all — the only way to see a sub, who is by
+      // Who was in the room at all 窶・the only way to see a sub, who is by
       // definition not a roster key.
       const inRoom = subEntries.length > 0 ? fileParticipants(file, renames) : null;
 
@@ -265,12 +354,12 @@ export function computePlayerGameRecords(
  * Games a player must have played in range before a win rate is quoted at all.
  *
  * One game is a 100% or a 0% with nothing in between, two games are 100/50/0,
- * three are already all-or-nothing — small samples swing so hard they read as
+ * three are already all-or-nothing 窶・small samples swing so hard they read as
  * form when they are really sample size. Four games is where the number starts
  * saying something about the player, so below it every win rate in the app
  * prints a dash rather than a figure nobody should act on.
  *
- * Counted over *games*, the same denominator `winRatePct` divides by — so this
+ * Counted over *games*, the same denominator `winRatePct` divides by 窶・so this
  * gate asks "enough games to quote a per-game rate?", not "enough games to have
  * played any?".
  */
@@ -278,10 +367,10 @@ export const MIN_GAMES_FOR_WINRATE = 4;
 
 /**
  * A record as a win percentage: a win is worth a point, a tie half, a loss
- * nothing, over the games played — so 2 wins, 1 tie and 3 losses is
+ * nothing, over the games played 窶・so 2 wins, 1 tie and 3 losses is
  * (2 + 0.5) / 6 = 41.7%. Null when there's no game to divide by, or when the
  * record is short of MIN_GAMES_FOR_WINRATE, so a caller can print a dash
- * instead of a 0% that reads like a loss streak — or a 100% off one game.
+ * instead of a 0% that reads like a loss streak 窶・or a 100% off one game.
  */
 export function winRatePct(record: PlayerGameRecord | undefined): number | null {
   if (!record || record.games < MIN_GAMES_FOR_WINRATE) return null;

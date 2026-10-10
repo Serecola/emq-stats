@@ -37,11 +37,15 @@ export function submodeOptions(mode: ModeFilter): string[] {
  * Reads a filter out of a page's `searchParams`, dropping anything that
  * isn't a real mode/sub-mode for the selected mode — so a hand-edited URL
  * can't ask for an impossible combination (e.g. `?mode=NGMC&submode=Balanced`).
+ * Modes with no sub-modes (Custom) have no sub-mode to parse: they carry
+ * none in the URL and the filter below keeps 'all'.
  */
 export function parseMatchFilter(params: { mode?: string; submode?: string }): MatchFilter {
   const mode: ModeFilter = MODES.includes(params.mode as Mode) ? (params.mode as Mode) : 'all';
   if (mode === 'all') return ALL_MATCH_FILTER;
-  const submode = SUBMODES_BY_MODE[mode].includes(params.submode ?? '')
+  const submodes = SUBMODES_BY_MODE[mode];
+  if (submodes.length === 0) return { mode, submode: 'all' };
+  const submode = submodes.includes(params.submode ?? '')
     ? (params.submode as string)
     : 'all';
   return { mode, submode };
@@ -52,6 +56,9 @@ export function parseMatchFilter(params: { mode?: string; submode?: string }): M
  * "all modes" (or "all sub-modes") is meaningless. With no mode in the URL
  * the first entry of `modes` (Erumode) becomes the default, and with no valid
  * sub-mode for it the first sub-mode of that mode (Normal) does.
+ *
+ * A mode with no sub-modes (Custom) is its own concrete selection: there is
+ * no sub-mode to default to, so it is passed through as-is.
  */
 export function parseSubmodeFilter(
   params: { mode?: string; submode?: string },
@@ -59,6 +66,7 @@ export function parseSubmodeFilter(
 ): { mode: Mode; submode: string } {
   const mode: Mode = modes.includes(params.mode as Mode) ? (params.mode as Mode) : modes[0];
   const submodes = SUBMODES_BY_MODE[mode];
+  if (submodes.length === 0) return { mode, submode: 'all' };
   const submode = submodes.includes(params.submode ?? '') ? (params.submode as string) : submodes[0];
   return { mode, submode };
 }

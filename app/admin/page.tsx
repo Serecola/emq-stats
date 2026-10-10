@@ -138,7 +138,12 @@ function TourRow({ match: m }: { match: MatchSummary }) {
   // player-view card in app/page.tsx) so an excluded tour never reads as
   // silently missing from player aggregates. Tour stays fully manageable —
   // only the cross-tournament stats skip it (see `statsMatches`).
-  const excluded = m.excludeFromStats === true;
+  //
+  // Two things take a tour out of stats: an explicit opt-out on this row, and
+  // the Custom mode — a Custom tournament is a catch-all for games that don't
+  // fit a graded gamemode, so it is excluded by mode alone and needs no
+  // per-tournament toggle. The toggle below hides itself for those.
+  const excluded = m.excludeFromStats === true || m.mode === 'Custom';
   return (
     <div className={`flex items-center justify-between gap-3 px-4 py-3 ${excluded ? 'border-l-2 border-l-taken' : ''}`}>
       <div className="min-w-0">
@@ -152,7 +157,11 @@ function TourRow({ match: m }: { match: MatchSummary }) {
         </Link>
         {excluded && (
           <span
-            title="Excluded from stats — this tournament feeds no player aggregates"
+            title={
+              m.mode === 'Custom'
+                ? 'Excluded from stats — this is a Custom tournament, which is never eligible for player aggregates'
+                : 'Excluded from stats — this tournament feeds no player aggregates'
+            }
             className="ml-2 rounded-full border border-taken/50 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-taken"
           >
             Excluded from stats
@@ -161,6 +170,7 @@ function TourRow({ match: m }: { match: MatchSummary }) {
         <div className="mt-0.5 text-xs text-textMuted">
           {m.teams.map((t) => t[0]).join(' vs ')} · {m.fileCount} file
           {m.fileCount !== 1 ? 's' : ''} · {new Date(m.createdAt).toLocaleDateString()}
+          {m.mode === 'Custom' && ' · Custom'}
         </div>
       </div>
       <div className="flex flex-shrink-0 items-center gap-3 text-xs">
@@ -183,8 +193,12 @@ function TourRow({ match: m }: { match: MatchSummary }) {
         </a>
         {/* Stats opt-out lives on the row, not in the editor: one click flips
             just the flag (PATCH), no roster/upload round-trip. The tour stays
-            listed, viewable and exportable — only the aggregates skip it. */}
-        <ExcludeStatsToggle id={m.id} title={m.title} excluded={excluded} />
+            listed, viewable and exportable — only the aggregates skip it.
+            Hidden for Custom tours: they're excluded by mode alone (see
+            `statsMatches`), so toggling the flag would be a no-op. */}
+        {m.mode !== 'Custom' && (
+          <ExcludeStatsToggle id={m.id} title={m.title} excluded={excluded} />
+        )}
         <DeleteMatchButton id={m.id} title={m.title} />
       </div>
     </div>

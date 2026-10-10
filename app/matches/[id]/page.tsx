@@ -7,7 +7,7 @@ import type { MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
 import {
   filesInStatsScope,
-  generateRoundRobin,
+  generateBracket,
   isFullScope,
   matchFilesToBracket,
   summarizeBracketFiles,
@@ -239,13 +239,16 @@ export default async function MatchPage({
         {/* Stats opt-out banner: the tour's own bracket/results/stats below read
             exactly as usual — only the cross-tournament aggregates (last-5 /
             all-time) skip it. Loud on purpose, so the exclusion never reads as
-            silently missing stats. */}
-        {match.excludeFromStats && (
+            silently missing stats. Custom tours light this from the mode alone —
+            their stored flag stays false (the Tour Manager toggle is hidden for
+            them), see `statsMatches` in lib/store.ts. */}
+        {(match.excludeFromStats || match.mode === 'Custom') && (
           <div className="mt-3 rounded-lg border border-taken/50 bg-taken/5 px-4 py-2.5 text-sm">
             <span className="font-semibold text-taken">Excluded from stats</span>
             <span className="text-textSub">
               {' '}
               — this tournament does not count towards any player&apos;s last-5 or all-time stats.
+              {match.mode === 'Custom' && ' (Custom tournaments are excluded by mode)'}
             </span>
           </div>
         )}
@@ -410,7 +413,7 @@ function parseStatsScope(
  * picks, the fixtures' own bracket labels ("Round 5 Game 1, Round 6 Game 1")
  * for game picks, nothing for the full scope.
  */
-function scopeLabel(scope: StatsScope, teams: Parameters<typeof generateRoundRobin>[0]): string {
+function scopeLabel(scope: StatsScope, teams: Parameters<typeof generateBracket>[0]): string {
   if (isFullScope(scope)) return '';
   if (scope.rounds.length > 0) {
     return `Round${scope.rounds.length > 1 ? 's' : ''} ${scope.rounds.join(', ')}`;
@@ -420,7 +423,7 @@ function scopeLabel(scope: StatsScope, teams: Parameters<typeof generateRoundRob
   // validated in parseStatsScope; the fallback only exists so a label
   // survives any future path that skips that check.
   const names = new Map<string, string>();
-  for (const round of generateRoundRobin(teams)) {
+  for (const round of generateBracket(teams)) {
     round.matchups.forEach((m, i) => {
       names.set(m.slot, `Round ${round.displayRound} Game ${i + 1}`);
     });

@@ -117,8 +117,16 @@ const SUMMARY_COLUMNS =
 // Expected Ranks for the autodrafter) only when it isn't opted out. Every
 // derivation goes through this one filter; lists, the match page itself and
 // exports keep reading the unfiltered rows.
+//
+// Two things take a match out of stats: an explicit opt-out on the Tour
+// Manager row, and the Custom mode — a Custom tournament is a catch-all for
+// games that don't fit a graded gamemode, so it is never eligible by mode
+// alone and needs no per-tournament toggle. Both are decided here, at the
+// single gate every derivation passes through, so the two can never drift
+// apart (a Custom tour re-included by un-checking the toggle would still be
+// kept out).
 function statsMatches(matches: Match[]): Match[] {
-  return matches.filter((m) => !m.excludeFromStats);
+  return matches.filter((m) => m.mode !== 'Custom' && !m.excludeFromStats);
 }
 
 

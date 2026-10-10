@@ -6,13 +6,15 @@ import { useState } from 'react';
  * The public, shareable address of a saved tournament: the page players and
  * spectators actually open, as opposed to this admin-only edit form.
  *
- * The base is hardcoded rather than derived from the current `window.location`
- * on purpose — the admin is editing on localhost during development, and a
- * link built from that would be useless to anyone who isn't on the admin's
- * machine. This component only ever renders for a match that already exists
+ * The base comes from `NEXT_PUBLIC_SITE_URL` (defined in next.config.mjs) rather
+ * than the current `window.location` on purpose — the admin is editing on
+ * localhost during development, and a link built from that would be useless to
+ * anyone who isn't on the admin's machine. The literal default matches the
+ * production origin so the copied link is correct even before the env is wired
+ * up. This component only ever renders for a match that already exists
  * (`existing.id`), so the id is always present.
  */
-const PUBLIC_ORIGIN = 'http://serecola.com/emq-stats';
+const PUBLIC_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://stats.serecola.com';
 
 /**
  * The player-view link for a saved tournament, with a one-click copy button.

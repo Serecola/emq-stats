@@ -74,11 +74,12 @@ export function parseResultsTsv(text: string): { rows: ClipboardResultRow[]; bad
 
 /** The slice of a bracket fixture the importer needs — structurally
  * satisfied by BracketMatchup (lib/schedule.ts) without importing it, so
- * this module stays dependency-free and verifiable on its own. */
+ * this module stays dependency-free and verifiable on its own. Only
+ * two-team fixtures are importable (see matchResultsToFixtures). */
 export interface ImportableFixture {
   slot: string;
-  teamAIndex: number;
-  teamBIndex: number;
+  /** Every team in the fixture: exactly 2 for a pairing, 3 for a 3v3v3 round. */
+  teamIndices: number[];
 }
 
 export interface ImportableRound {
@@ -123,7 +124,7 @@ export interface ImportMatchResult {
  * matchFilesToBracket uses when placing uploads into an empty slot of the
  * pair. A row's columns may list the sides either way round (a rematch
  * often flips them); scores are oriented by which column holds the
- * fixture's teamAIndex.
+ * fixture's first team.
  */
 export function matchResultsToFixtures(
   rows: ClipboardResultRow[],
@@ -147,12 +148,17 @@ export function matchResultsToFixtures(
     return ordered.get(key) ?? sorted.get(key.split(' ').slice().sort().join(' ')) ?? null;
   };
 
-  // Fixtures grouped per pairing, in bracket order (1 entry per cycle).
+  // Fixtures grouped per pairing, in bracket order (1 entry per cycle). A
+  // 3v3v3 round is not a pairing: one TSV row carries two team columns and
+  // can't say which of the three teams its scores belong to, so those
+  // fixtures are left out entirely and their rows fall through to
+  // extraRows rather than half-filling a game.
   const pairKey = (i: number, j: number) => `${Math.min(i, j)},${Math.max(i, j)}`;
   const fixturesByPair = new Map<string, ImportableFixture[]>();
   for (const round of rounds) {
     for (const m of round.matchups) {
-      const key = pairKey(m.teamAIndex, m.teamBIndex);
+      if (m.teamIndices.length !== 2) continue;
+      const key = pairKey(m.teamIndices[0], m.teamIndices[1]);
       const list = fixturesByPair.get(key);
       if (list) list.push(m);
       else fixturesByPair.set(key, [m]);
@@ -188,11 +194,12 @@ export function matchResultsToFixtures(
     }
     consumed.set(key, used + 1);
     const fixture = fixtures[used];
-    const teamAFirst = i1 === fixture.teamAIndex;
+    const [teamAIndex, teamBIndex] = fixture.teamIndices;
+    const teamAFirst = i1 === teamAIndex;
     applied.push({
       slot: fixture.slot,
-      teamAIndex: fixture.teamAIndex,
-      teamBIndex: fixture.teamBIndex,
+      teamAIndex,
+      teamBIndex,
       scoreA: teamAFirst ? row.score1 : row.score2,
       scoreB: teamAFirst ? row.score2 : row.score1,
     });

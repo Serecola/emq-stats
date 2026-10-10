@@ -152,12 +152,16 @@ function MatchCard({
     createdAt: string;
     teams: string[][];
     // Uploads stored against the tournament, which is also its games-played
-    // count — one export is one game. Labelled as games on the card; see the
-    // note where it's rendered.
+    // count — one export is one game. Labelled as games on the card; see
+    // the note where it's rendered.
     fileCount: number;
     // Stats opt-out: excluded tours keep a red border + label so they never
     // read as silently missing from player aggregates.
     excludeFromStats?: boolean;
+    // The tournament's gamemode — a Custom tour is excluded from stats by
+    // mode alone (see `statsMatches` in lib/store.ts), so the card reads the
+    // mode to flag it even when its `excludeFromStats` is still false.
+    mode: string;
   };
   highlight?: boolean;
 }) {
@@ -166,7 +170,11 @@ function MatchCard({
     month: 'short',
     day: 'numeric',
   });
-  const excluded = match.excludeFromStats === true;
+  // A Custom tournament is excluded from stats by mode alone (see
+  // `statsMatches` in lib/store.ts) — its `excludeFromStats` flag stays false,
+  // so the pill has to be derived from the mode here rather than read off the
+  // flag. Same treatment as the Tour Manager row.
+  const excluded = match.excludeFromStats === true || match.mode === 'Custom';
   return (
     <Link
       href={`/matches/${match.id}`}
@@ -183,7 +191,11 @@ function MatchCard({
           {match.title}
           {excluded && (
             <span
-              title="Excluded from stats — this tournament feeds no player aggregates"
+              title={
+                match.mode === 'Custom'
+                  ? 'Excluded from stats — this is a Custom tournament, which is never eligible for player aggregates'
+                  : 'Excluded from stats — this tournament feeds no player aggregates'
+              }
               className="ml-2 rounded-full border border-taken/50 px-1.5 py-0.5 align-middle text-[0.65rem] font-medium uppercase tracking-wide text-taken"
             >
               Excluded from stats
@@ -219,14 +231,15 @@ function MatchCard({
             </span>
           )
         )}
-        {/* Games played, not uploads: one uploaded export is one game between
-            two teams, which is how the rest of the app counts them (the match
-            page's scope summary says "N games in scope", and
-            `computeScheduleProgress` counts recorded games per pair). For a
-            legal 4- or 6-team roster the numbers coincide exactly — 4 teams is
-            a double round robin, so the 12 expected games and the 12 files
-            are the same 12 — so `fileCount` is already the game count, and
-            reading it as "12 files" only exposed the upload detail. */}
+        {/* Games played, not uploads: one uploaded export is one game, which
+            is how the rest of the app counts them (the match page's scope
+            summary says "N games in scope", and `computeScheduleProgress`
+            counts recorded games per fixture). For a legal 3-, 4- or 6-team
+            roster the numbers coincide exactly — 4 teams is a double round
+            robin, so the 12 expected games and the 12 files are the same 12,
+            and a 3-team tournament is one file per 3v3v3 round — so
+            `fileCount` is already the game count, and reading it as "12
+            files" only exposed the upload detail. */}
         <span className="text-textDim">
           · {match.fileCount} game{match.fileCount !== 1 ? 's' : ''}
         </span>

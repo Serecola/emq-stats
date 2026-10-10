@@ -55,24 +55,74 @@ Set both as environment variables on Vercel (Project Settings → Environment
 Variables) — no schema migration step needed, it's created automatically the
 first time the app queries the database.
 
-## The app is served under `/emq-stats`
+## The app is served on its own subdomain
 
-`next.config.mjs` sets `basePath: '/emq-stats'`, because the app shares a host
-with another site. Every route therefore lives under that prefix in production:
+The app used to share a host with another site and live under `/emq-stats`. It
+now runs at the root of its own subdomain, so `next.config.mjs` sets an empty
+`basePath` and every route sits at the top level:
 
 | Route                        | Production URL                              |
 | ---------------------------- | ------------------------------------------- |
-| Viewer                       | `https://serecola.com/emq-stats`            |
-| Admin                        | `https://serecola.com/emq-stats/admin`      |
-| Admin login                  | `https://serecola.com/emq-stats/admin/login`|
+| Viewer                       | `https://stats.serecola.com`                |
+| Admin                        | `https://stats.serecola.com/admin`          |
+| Admin login                  | `https://stats.serecola.com/admin/login`    |
 
-Hitting the domain root (`https://serecola.com/admin/...`) returns nginx's
-**404 Not Found** — there is no route there, so the request never reaches the
-app.
+### Old `/emq-stats` links still work
 
-Next.js adds the prefix for you when you use `<Link href>` or
+Every path that used to be `https://serecola.com/emq-stats/...` redirects to the
+same path on the new subdomain, so old bookmarks and pasted links keep working:
+
+- `https://serecola.com/emq-stats` → `https://stats.serecola.com`
+- `https://serecola.com/emq-stats/matches/ejNIipZqW2` →
+  `https://stats.serecola.com/matches/ejNIipZqW2`
+
+The mapping lives in `next.config.mjs`'s `redirects()` (a `308` permanent
+redirect, which preserves the method), so it applies on any host. Because
+`redirects()` only fires once a request reaches the app, the old host must still
+proxy `/emq-stats` to this app — either let `next start` handle the redirect, or
+do it at the edge in nginx on the old host:
+
+```nginx
+# On the OLD host (serecola.com) — send /emq-stats/* to the subdomain.
+location /emq-stats {
+  return 308 https://stats.serecola.com$request_uri;
+}
+```
+
+The new subdomain's own nginx server block just proxies the whole host:
+
+```nginx
+server {
+  server_name stats.serecola.com;
+  client_max_body_size 64m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+
+    # Hand the app the address the visitor actually used — see the Host
+    # bullet below for what goes wrong without these. `$host` is the
+    # requested hostname; use `$http_host` if the site is on a non-standard
+    # port and the port has to survive.
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+}
+```
+
+### Absolute URLs
+
+The shareable "Player view link" on a match's edit form is the one absolute URL
+the app builds by hand. Its base comes from `NEXT_PUBLIC_SITE_URL`, defined once
+in `next.config.mjs` next to the (empty) `basePath` and read by
+`components/ShareMatchLink.tsx` — change it there and every share link follows.
+It is deliberately *not* derived from `window.location`, because the admin edits
+on localhost and a link built from that would be useless to everyone else.
+
+Next.js adds any basePath for you when you use `<Link href>` or
 `router.push()` / `router.replace()`. It does **not** for a URL you build by
-hand, so those need `withBasePath()` from `lib/base-path.ts`:
+hand, so those route through `withBasePath()` from `lib/base-path.ts`:
 
 - `fetch()` calls in client components (login, logout, the Player Manager
   writes, the match form's save, match delete)
@@ -81,7 +131,9 @@ hand, so those need `withBasePath()` from `lib/base-path.ts`:
   (lib/admin-session.ts), which — like `<Link>` and the router — applies the
   basePath itself, so it takes the unprefixed `/admin/login`
 
-`next.config.mjs` exports the value as `NEXT_PUBLIC_BASE_PATH` so
+With `basePath` empty these hand-built URLs need no prefix today, but
+`withBasePath()` stays so a future sub-path deployment needs no call-site
+changes. `next.config.mjs` exports the value as `NEXT_PUBLIC_BASE_PATH` so
 `lib/base-path.ts` reads it rather than repeating the string.
 
 ## Local development
@@ -92,8 +144,8 @@ npm install
 npm run dev
 ```
 
-The prefix applies here too, so visit `http://localhost:3000/emq-stats` for the
-viewer and `/emq-stats/admin` for the admin panel.
+`basePath` is empty locally too, so visit `http://localhost:3000` for the viewer
+and `/admin` for the admin panel.
 
 ## Light / dark mode
 
@@ -141,9 +193,10 @@ proxy's limits apply on top of the app's:
 
   ```nginx
   server {
+    server_name stats.serecola.com;
     client_max_body_size 64m;
 
-    location /emq-stats {
+    location / {
       proxy_pass http://127.0.0.1:3000;
 
       # Hand the app the address the visitor actually used — see the Host
@@ -179,9 +232,9 @@ proxy's limits apply on top of the app's:
   the browser resolves against whatever domain it used — but the headers are one
   line each, and every future absolute URL depends on them.
 
-  Verify from outside with `curl -sSI https://<domain>/emq-stats/admin`: the
-  `Location` should be `/emq-stats/admin/login?from=%2Fadmin` — a path, never a
-  URL naming some other host. The live host config (this location, the HTTP →
+  Verify from outside with `curl -sSI https://stats.serecola.com/admin`: the
+  `Location` should be `/admin/login?from=%2Fadmin` — a path, never a
+  URL naming some other host. The live host config (this server block, the HTTP →
   HTTPS redirect, the certbot SSL lines) lives on the server, not in this repo —
   the snippet above is what it must contain.
 
@@ -243,7 +296,7 @@ also covers a restart or extra instance:
 limit_req_zone $binary_remote_addr zone=emq_login:10m rate=10r/m;
 
 server {
-  location /emq-stats/api/admin/login {
+  location /api/admin/login {
     limit_req zone=emq_login burst=5 nodelay;
     proxy_pass http://127.0.0.1:3000;
     # ...plus the same proxy_set_header lines as the app location above
@@ -578,6 +631,13 @@ NGMC Random, Erumode Balanced) — there is no mode-level rank, because that's
 the granularity a draft is balanced at and each sub-mode has its own ladder
 (Erumode's Performance is also scored on a different scale).
 
+Only **Erumode** and **NGMC** are offered as selections (`LADDER_MODES` in
+`lib/types.ts`): Custom has no sub-mode bucket to store a rank in and is never
+stats-eligible, so it has no ladder to manage — a `?mode=Custom` URL falls
+back to Erumode. A Custom tournament is still *drafted* against a ladder: its
+autodraft reads the Erumode Normal tables (see
+[Autodraft rank sources](#autodraft-rank-sources)).
+
 - **Set Rank** — the admin's own rank for a player in that gamemode + sub-mode.
   Edited inline in the table (saves on blur/Enter via
   `PUT /api/admin/player-ranks`) and stored in the `player_set_ranks` table,
@@ -768,6 +828,14 @@ of three rank sources, picked with the pills above the players box:
    — the same unranked semantics the old Pasted-table source had. Rounding
    works as above.
 
+A **Custom** tournament reads the **Erumode Normal** tables for all three
+sources. Custom has no sub-mode and is never stats-eligible, so it can hold no
+Set Ranks (the Set Rank endpoint rejects every sub-mode for Custom) and no
+Expected Ranks are ever computed for it — without a default its autodraft would
+start from nothing. The mapping lives in `ranksBucketFor` / `ranksLabelFor`
+(`lib/player-ranks.ts`), and the label is read through the same helper, so the
+ranks being used and the name they're attributed to can't disagree.
+
 Whichever source is selected, the Ranks box still works as a per-tournament
 override on top of it — a `rank: name, name` table pasted in there
 (`11: karira, patt`) is how a one-off draft outside the saved ladders is
@@ -906,6 +974,26 @@ placeholder on purpose.
   file** — since one match file usually only involves 2 of the teams in a
   larger roster, only the team(s) whose players actually appear in that file
   are listed as attack targets.
+
+### Which tournaments count
+
+Every *cross-tournament* figure — last-5 / all-time stats, rank rows, the
+autodraft's Expected Ranks — is read over `statsMatches` in `lib/store.ts`,
+the single gate every derivation passes through. It keeps a tournament out
+when either:
+
+- its **Exclude from stats** flag is set (the Tour Manager row toggle), or
+- its mode is **Custom**: a catch-all for tournaments that don't fit the
+  graded gamemodes (NGMC / Erumode). Custom has no sub-modes and is never
+  stats-eligible, so it is excluded by mode alone — which is also why the
+  Tour Manager hides the toggle for it (flipping the flag would be a no-op).
+
+Lists, the tournament's own page and the archive export always keep reading
+the unfiltered rows, and the per-tournament Stats section on the match page
+is unaffected either way — only the cross-tournament aggregates skip these
+tournaments. Both views show the exclusion loudly ("Excluded from stats"),
+with Custom deriving that pill from its mode rather than a stored flag.
+
 ## Most played VNs
 
 The Stats section ends with **Most Played VNs**: the visual novels a tournament

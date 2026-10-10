@@ -21,14 +21,29 @@ export function regionOrder(region: string): number {
 // Gamemodes in priority order: Erumode is listed first everywhere modes are
 // offered or displayed — the match form's picker, the tournament-list chips,
 // the /players sub-mode rows, per-mode stat sections, the Player Manager's
-// default selection, ...
-export type Mode = 'NGMC' | 'Erumode';
-export const MODES: Mode[] = ['Erumode', 'NGMC'];
+// default selection, ... Custom is last: it is a catch-all for tournaments
+// that don't fit the graded gamemodes and is never a stats-eligible mode.
+export type Mode = 'NGMC' | 'Erumode' | 'Custom';
+export const MODES: Mode[] = ['Erumode', 'NGMC', 'Custom'];
 
-// Sub-mode options depend on the tournament's mode.
+// The gamemodes that can hold a ladder — every mode but Custom. A rank lives
+// in a (mode, sub-mode) bucket and Custom has none to store one in (see
+// SUBMODES_BY_MODE below), and the Set Rank endpoint rejects every sub-mode
+// for it, so the Player Manager offers no Custom selection: its mode row is
+// built from this list, and a `?mode=Custom` URL falls back to the first
+// entry (the `modes` argument of parseSubmodeFilter). A Custom tournament is
+// still drafted — against the Erumode Normal ladder (see `ranksBucketFor` in
+// lib/player-ranks.ts).
+export const LADDER_MODES: Mode[] = ['Erumode', 'NGMC'];
+
+// Sub-mode options depend on the tournament's mode. Custom has none — it is a
+// single, undifferentiated bucket — and a Custom tournament is excluded from
+// player stats automatically (see `statsMatches` in lib/store.ts), so it never
+// needs a sub-mode to slice stats by.
 export const SUBMODES_BY_MODE: Record<Mode, string[]> = {
   NGMC: ['Normal', 'Random'],
   Erumode: ['Normal', 'Random', 'Balanced', 'No Vocal'],
+  Custom: [],
 };
 export type Submode = string;
 

@@ -1,4 +1,4 @@
-import { generateRoundRobin, matchFilesToBracket, type BracketMatchup } from './schedule';
+import { generateBracket, matchFilesToBracket, type BracketMatchup } from './schedule';
 import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match } from './types';
 
@@ -126,7 +126,7 @@ type Fixture = BracketMatchup & { displayMatch: number };
  */
 function fixturesBySlot(match: Pick<Match, 'teams'>): Map<string, Fixture> {
   const index = new Map<string, Fixture>();
-  for (const round of generateRoundRobin(match.teams)) {
+  for (const round of generateBracket(match.teams)) {
     round.matchups.forEach((matchup, i) => {
       index.set(matchup.slot, { ...matchup, displayMatch: i + 1 });
     });
@@ -157,7 +157,7 @@ function uploadFileName(
   fixture: Fixture | undefined
 ): string {
   if (fixture) {
-    const teams = [slug(fixture.labelA, '', 24), slug(fixture.labelB, '', 24)].filter(Boolean);
+    const teams = fixture.labels.map((label) => slug(label, '', 24)).filter(Boolean);
     const where = `r${fixture.displayRound}m${fixture.displayMatch}`;
     return teams.length ? `${where}-${teams.join('-vs-')}.json` : `${where}.json`;
   }

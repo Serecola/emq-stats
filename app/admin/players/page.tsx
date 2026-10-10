@@ -24,6 +24,7 @@ import {
   type MatchFilter,
 } from '@/lib/match-filter';
 import { parseStatsRange, playerViewQuery, RECENT_TOUR_COUNT, statsRangeFragment, type StatsRange } from '@/lib/stats-range';
+import { LADDER_MODES } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,8 +66,12 @@ export default async function AdminPlayersPage({
   // Ranks are per gamemode *and* sub-mode (that's what a draft is balanced
   // at), so this view always works inside exactly one sub-mode — there is no
   // mode-level or "all sub-modes" rank. An unfiltered visit lands on the
-  // first sub-mode of the first gamemode.
-  const { mode, submode } = parseSubmodeFilter(searchParams);
+  // first sub-mode of the first gamemode. The mode list is LADDER_MODES:
+  // Custom can hold no rank, so it is not offered here and a `?mode=Custom`
+  // URL falls back to Erumode rather than an empty ladder (a Custom
+  // tournament's own ranks are read from Erumode Normal — see
+  // ranksBucketFor in lib/player-ranks.ts).
+  const { mode, submode } = parseSubmodeFilter(searchParams, LADDER_MODES);
   const filter: MatchFilter = { mode, submode };
   const tab = searchParams.tab === 'tags' ? 'tags' : 'ranks';
   // What the ladder's Expected Ranks are read over: each player's last
@@ -139,6 +144,9 @@ export default async function AdminPlayersPage({
   // row to that player's most recent tournaments for the "Recent" switch.
   const rows = await listPlayerRankRows(mode, submode, rangeLimit);
 
+  // Every mode this page offers has concrete sub-modes (Custom is not one of
+  // them — see LADDER_MODES), and parseSubmodeFilter only ever hands back one
+  // of those, so the selection always reads "<mode> <sub-mode>".
   const selection = `${mode} ${submode}`;
   // Spelled out in the copy under the table, so it says which tournaments the
   // Expected Ranks were read over instead of leaving that to the switch alone.
@@ -181,6 +189,7 @@ export default async function AdminPlayersPage({
         basePath="/admin/players"
         includeAll={false}
         includeAllSubmodes={false}
+        modes={LADDER_MODES}
         extraQuery={statsRangeFragment(range)}
       />
 

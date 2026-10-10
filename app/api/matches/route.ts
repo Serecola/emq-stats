@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMatch, listMatchSummaries } from '@/lib/store';
 import { hasAdminSession } from '@/lib/admin-session';
 import { isValidDate } from '@/lib/match-title';
-import { isValidTeamCount } from '@/lib/schedule';
+import { isValidTeamCount, validTeamCountsPhrase } from '@/lib/format';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
 import type { MatchInput } from '@/lib/types';
 
@@ -36,17 +36,22 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!SUBMODES_BY_MODE[body.mode]?.includes(body.submode)) {
-    return NextResponse.json(
-      { error: `Sub-mode must be one of: ${SUBMODES_BY_MODE[body.mode]?.join(', ')}.` },
-      { status: 400 }
-    );
+    // Custom has no sub-mode: an empty one is exactly what it stores (the
+    // editor hides the sub-mode picker for it). Any other mode requires a
+    // concrete sub-mode.
+    if (!(body.mode === 'Custom' && (body.submode ?? '') === '')) {
+      return NextResponse.json(
+        { error: `Sub-mode must be one of: ${SUBMODES_BY_MODE[body.mode]?.join(', ')}.` },
+        { status: 400 }
+      );
+    }
   }
   if (!Array.isArray(body.teams) || body.teams.length < 2) {
     return NextResponse.json({ error: 'At least 2 teams are required.' }, { status: 400 });
   }
   if (!isValidTeamCount(body.teams.length)) {
     return NextResponse.json(
-      { error: `Tournaments must have exactly 4 or 6 teams (got ${body.teams.length}).` },
+      { error: `Tournaments must have exactly ${validTeamCountsPhrase()} teams (got ${body.teams.length}).` },
       { status: 400 }
     );
   }

@@ -20,6 +20,10 @@ export default function ResultsSection({
   // roster (parsed into playerRanks, see lib/teams.ts) — looked up by
   // normalized username, the same identity the MVP and Guess Rate tables use.
   const rankOf = (name: string): number | null => playerRanks[norm(name)] ?? null;
+  // Which standings the table shows — see lib/results.ts. A 3v3v3 tournament
+  // ranks on summed placement points with rounds won as the tiebreak, so it
+  // shows Pts + TB instead of the round robin's W-L-T / Sets columns.
+  const threeWay = results.format === 'threeWay';
 
   if (!results.hasScores) {
     return (
@@ -55,7 +59,9 @@ export default function ResultsSection({
               ))}
             </div>
             <div className="mt-2 text-sm text-textSub">
-              {team.matchWins}-{team.matchLosses}-{team.matchTies} · {team.pts} pts
+              {threeWay
+                ? `${team.pts} pts · ${team.totalScore} score · ${team.firsts} 1st · ${team.seconds} 2nd · ${team.thirds} 3rd`
+                : `${team.matchWins}-${team.matchLosses}-${team.matchTies} · ${team.pts} pts`}
             </div>
           </div>
         ))}
@@ -67,13 +73,41 @@ export default function ResultsSection({
             <tr className="border-b border-border bg-surfaceAlt text-left text-[0.65rem] uppercase tracking-wide text-textMuted sm:text-xs">
               <th className="px-3 py-2 font-medium">Rank</th>
               <th className="px-3 py-2 font-medium">Participant</th>
-              <th className="px-3 py-2 text-right font-medium">Match W-L-T</th>
-              <th className="px-3 py-2 text-right font-medium" title="Game wins against opponents tied on Match W-L-T">
-                TB
-              </th>
-              <th className="px-3 py-2 text-right font-medium">Set Wins</th>
-              <th className="px-3 py-2 text-right font-medium">Set Ties</th>
-              <th className="px-3 py-2 text-right font-medium">Pts</th>
+              {threeWay ? (
+                <>
+                  <th
+                    className="px-3 py-2 text-right font-medium"
+                    title="Total points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd in each round, added up"
+                  >
+                    Pts
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right font-medium"
+                    title="Total score — raw sum of each team's own entered scores across every round"
+                  >
+                    Score
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right font-medium"
+                    title="Rounds won (1st-place finishes) — the tiebreak when points are level"
+                  >
+                    TB
+                  </th>
+                </>
+              ) : (
+                <>
+                  <th className="px-3 py-2 text-right font-medium">Match W-L-T</th>
+                  <th
+                    className="px-3 py-2 text-right font-medium"
+                    title="Game wins against opponents tied on Match W-L-T"
+                  >
+                    TB
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">Set Wins</th>
+                  <th className="px-3 py-2 text-right font-medium">Set Ties</th>
+                  <th className="px-3 py-2 text-right font-medium">Pts</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -97,13 +131,23 @@ export default function ResultsSection({
                     );
                   })}
                 </td>
-                <td className="px-3 py-2 text-right text-textSub">
-                  {r.matchWins} - {r.matchLosses} - {r.matchTies}
-                </td>
-                <td className="px-3 py-2 text-right text-textMuted">{r.tb}</td>
-                <td className="px-3 py-2 text-right text-textMuted">{r.setWins}</td>
-                <td className="px-3 py-2 text-right text-textMuted">{r.setTies}</td>
-                <td className="px-3 py-2 text-right font-semibold text-accent">{r.pts}</td>
+                {threeWay ? (
+                  <>
+                    <td className="px-3 py-2 text-right font-semibold text-accent">{r.pts}</td>
+                    <td className="px-3 py-2 text-right text-textSub">{r.totalScore}</td>
+                    <td className="px-3 py-2 text-right text-textMuted">{r.tb}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-2 text-right text-textSub">
+                      {r.matchWins} - {r.matchLosses} - {r.matchTies}
+                    </td>
+                    <td className="px-3 py-2 text-right text-textMuted">{r.tb}</td>
+                    <td className="px-3 py-2 text-right text-textMuted">{r.setWins}</td>
+                    <td className="px-3 py-2 text-right text-textMuted">{r.setTies}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-accent">{r.pts}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>

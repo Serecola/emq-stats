@@ -25,9 +25,13 @@ const TEAM_HIGHLIGHT_ALPHA = 0.12;
 
 /**
  * One team's half of a bracket matchup card — the whole roster as equally
- * emphasized chips in the team's own color, a `win` / `tie` tag inline next to
- * them, the winner's row tinted, and a hover highlight so every cell that team
- * plays in (in every round) lights up together.
+ * emphasized chips in the team's own color, a result tag inline next to
+ * them, the winner's row tinted, and a hover highlight so every cell that
+ * team plays in (in every round) lights up together.
+ *
+ * The tag is `win` / `tie` for a round-robin pairing; a 3v3v3 card also
+ * carries `2nd` / `3rd`, since every team in a three-way round has a place
+ * worth showing (and it is the place its points come from).
  *
  * Shared by the two brackets that show the same fixtures: the read-only one on
  * the match page (`RoundRobinGrid`) and the score-entry one in the admin form
@@ -46,17 +50,17 @@ export default function BracketTeamRow({
 }: {
   members: Team;
   teamIndex: number;
-  result: 'win' | 'tie' | null;
+  result: 'win' | 'tie' | '2nd' | '3rd' | null;
   highlighted: boolean;
   onHover: (teamIndex: number) => void;
   /** Right-hand control: a score pill (match page) or score input (admin form). */
   score: ReactNode;
   /**
-   * Draw a rule under this row. Set it on the FIRST team of a matchup only, so
-   * the pair is split by one line without a trailing rule under the second.
-   * Without it the two rosters run together and, on a card where neither team
-   * won, nothing marks where one team ends and the other begins. `borderSub` is
-   * the same rule the stats tables use between rows.
+   * Draw a rule under this row. Set it on every row but the LAST team of a
+   * matchup, so the teams are split by rules without a trailing rule under
+   * the final one. Without it the rosters run together and, on a card where
+   * nobody won, nothing marks where one team ends and the other begins.
+   * `borderSub` is the same rule the stats tables use between rows.
    */
   divider?: boolean;
 }) {
