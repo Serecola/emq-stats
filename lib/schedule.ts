@@ -628,3 +628,37 @@ export function summarizeBracketFiles(
   }
   return summarized;
 }
+
+/**
+ * A short human label per bracket-placed file: which fixture the game was
+ * between, plus which number game it was for those teams — `patt vs Tommy G2`,
+ * the second recorded meeting of that exact pairing (for a 3v3v3 tournament,
+ * which of its five rounds it was, since every round has the same three teams).
+ *
+ * The number counts a fixture's occurrences in display order, *not* the
+ * bracket card's per-round "Game N": a double round robin's rematch leg lists
+ * its matchups in the same order as the leg it mirrors, so the per-round
+ * number would label both legs of a pairing identically, while here the
+ * second one reads G2.
+ *
+ * Only files the bracket could place are present; callers fall back to the
+ * file's own label for the slot-less uploads that count towards the full view.
+ */
+export function gameLabelsByFileId(
+  teams: Team[],
+  assignment: BracketAssignment
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  const meetings = new Map<string, number>();
+  for (const round of generateBracket(teams)) {
+    for (const matchup of round.matchups) {
+      const file = assignment.bySlot[matchup.slot];
+      if (!file) continue;
+      const key = teamSetKey(matchup.teamIndices);
+      const meeting = (meetings.get(key) ?? 0) + 1;
+      meetings.set(key, meeting);
+      labels[file.id] = `${matchup.labels.join(' vs ')} G${meeting}`;
+    }
+  }
+  return labels;
+}

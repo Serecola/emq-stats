@@ -1033,6 +1033,17 @@ quiz's own page plus Wikidata/EGS/VGMdb entries, and only the VNDB one is a link
 stays put, and a VN whose source carries no VNDB link renders as plain text
 rather than a dead link.
 
+Under each row sits the songs behind its plays, most-played first:
+`Artist - Song Name x2 (patt vs Tommy G2)` — the `xN` count appears only for a
+song asked more than once, then the game(s) it was asked in (a played-once song
+still says where it came up, just without a count that would only read "x1").
+Songs group by the export's own song id, the same way VNs group by their source
+id. A game's label is the fixture the file was attached to plus which number
+meeting of those teams it was (`gameLabelsByFileId` in `lib/schedule.ts`) — the
+second meeting of a double round robin's pairing reads G2 rather than sharing
+its first leg's per-round "Game" number — and a file that never landed on the
+bracket falls back to its own upload label.
+
 A **Copy** button sits next to the heading. It copies the table plus the rig
 distribution (`formatVnCopySummary` in `lib/vn-plays.ts`) as plain text:
 

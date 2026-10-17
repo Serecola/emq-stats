@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
+import Link from 'next/link';
 import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-stats';
 import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
@@ -270,10 +271,17 @@ export default function GuessRateTable({
   };
 
   // Shared name cell for both mode tables: team tint plus the bot pill when
-  // the username is tagged (see PlayerTagBadge).
+  // the username is tagged (see PlayerTagBadge). The name itself is a link to
+  // the player's profile — the same target the bracket chips now use.
   const nameRender = (r: { uname: string }): React.ReactNode => (
     <span style={{ color: colorOf(r.uname) }}>
-      {r.uname}
+      <Link
+        href={`/players/${encodeURIComponent(r.uname)}`}
+        title={`View ${r.uname}'s profile`}
+        className="hover:underline"
+      >
+        {r.uname}
+      </Link>
       <PlayerTagBadge uname={r.uname} overrides={playerTags} className="ml-1.5" />
     </span>
   );

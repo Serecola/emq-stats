@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { teamColor, teamColorBg } from '@/lib/team-colors';
 import type { Team } from '@/lib/types';
@@ -38,6 +39,10 @@ const TEAM_HIGHLIGHT_ALPHA = 0.12;
  * (`MatchForm`). Only the right-hand control differs — a score pill there, a
  * score input here — so it is passed in as `score`; the rest lives here to keep
  * the two brackets from drifting apart.
+ *
+ * On the read-only bracket each roster chip is also a link to that player's
+ * profile (`profileLinks`); the admin form leaves it off, so a click in the
+ * score-entry bracket can never navigate away from a half-edited tournament.
  */
 export default function BracketTeamRow({
   members,
@@ -47,6 +52,7 @@ export default function BracketTeamRow({
   onHover,
   score,
   divider = false,
+  profileLinks = false,
 }: {
   members: Team;
   teamIndex: number;
@@ -63,6 +69,12 @@ export default function BracketTeamRow({
    * `borderSub` is the same rule the stats tables use between rows.
    */
   divider?: boolean;
+  /**
+   * Turn each roster chip into a link to that player's profile
+   * (`/players/<name>`). Set on the match page's read-only bracket; the admin
+   * form's chips stay inert — see the component doc above.
+   */
+  profileLinks?: boolean;
 }) {
   const win = result === 'win';
   const tie = result === 'tie';
@@ -95,21 +107,36 @@ export default function BracketTeamRow({
       } ${divider ? 'border-b border-borderSub' : ''}`}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
-        {members.map((name, i) => (
-          <span
-            key={`${name}-${i}`}
-            style={chipBg}
-            className={`truncate rounded px-1 text-xs ${
-              win
-                ? 'font-semibold text-text'
-                : tie
-                  ? 'font-medium text-text'
-                  : 'text-textSub'
-            }`}
-          >
-            {name}
-          </span>
-        ))}
+        {members.map((name, i) => {
+          // One chip either way — only the element changes, so a linked roster
+          // still tints, truncates and emphasizes exactly like the inert one.
+          const chipClass = `truncate rounded px-1 text-xs ${
+            win
+              ? 'font-semibold text-text'
+              : tie
+                ? 'font-medium text-text'
+                : 'text-textSub'
+          }${profileLinks ? ' hover:underline' : ''}`;
+          return profileLinks ? (
+            <Link
+              key={`${name}-${i}`}
+              href={`/players/${encodeURIComponent(name)}`}
+              style={chipBg}
+              className={chipClass}
+              title={`View ${name}'s profile`}
+            >
+              {name}
+            </Link>
+          ) : (
+            <span
+              key={`${name}-${i}`}
+              style={chipBg}
+              className={chipClass}
+            >
+              {name}
+            </span>
+          );
+        })}
         {result && (
           <span
             className={`flex-shrink-0 rounded px-1 text-[0.6rem] font-semibold uppercase tracking-wide ${

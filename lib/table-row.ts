@@ -18,5 +18,13 @@
  * table's tinted rows were always meant to use (see the note there on inline
  * backgrounds outranking hover classes).
  */
-export const TABLE_ROW_CLASS =
-  'border-b border-borderSub transition-colors last:border-b-0 hover:bg-text/[0.07]';
+/**
+ * Everything in TABLE_ROW_CLASS except its bottom border. For a body row that
+ * is followed by a continuation row belonging to it (the Most Played VNs
+ * table's per-song sub-rows), the border moves to the continuation row instead
+ * — otherwise the line would fall between a row and its own songs and the
+ * songs would read as attached to the *next* row.
+ */
+export const TABLE_ROW_NO_BORDER_CLASS = 'transition-colors hover:bg-text/[0.07]';
+
+export const TABLE_ROW_CLASS = `border-b border-borderSub last:border-b-0 ${TABLE_ROW_NO_BORDER_CLASS}`;

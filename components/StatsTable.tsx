@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { MatchStats, PlayerStats, PlayerTag, TeamStats } from '@/lib/types';
 import { teamColor } from '@/lib/team-colors';
@@ -147,14 +148,28 @@ function TeamRows({
         >
           <td className={`px-3 py-2 text-textDim ${STATS_BODY_TEXT}`}>{i + 1}</td>
           <td className="px-3 py-2">
-            <button
-              onClick={() => onSelectPlayer(m)}
+            {/* The name goes to the player's profile (the same target every
+                other view links a username at). The attack list this cell used
+                to open on click keeps its own control beside the name — see the
+                ⚔ button below — so neither destination costs the other. */}
+            <Link
+              href={`/players/${encodeURIComponent(m.uname)}`}
               style={{ color }}
+              title={`View ${m.uname}'s profile`}
               className="font-medium underline decoration-dotted decoration-textDim underline-offset-4 hover:!text-text hover:decoration-textSub"
             >
               {m.uname}
-            </button>
+            </Link>
             <PlayerTagBadge uname={m.uname} overrides={playerTags} className="ml-1.5" />
+            <button
+              type="button"
+              onClick={() => onSelectPlayer(m)}
+              title={`Show the attacks by ${m.uname}`}
+              aria-label={`Show the attacks by ${m.uname}`}
+              className="ml-1.5 rounded px-1 text-xs text-textDim hover:bg-surfaceAlt hover:text-text"
+            >
+              ⚔
+            </button>
           </td>
           <td className="px-3 py-2 text-right text-textMuted">{m.correct}</td>
           {/* The effective total is a *dimmer neutral*, not the stat color at

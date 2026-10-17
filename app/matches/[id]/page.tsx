@@ -7,6 +7,7 @@ import type { MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
 import {
   filesInStatsScope,
+  gameLabelsByFileId,
   generateBracket,
   isFullScope,
   matchFilesToBracket,
@@ -98,6 +99,10 @@ export default async function MatchPage({
   // to its two teams — the same attach the stats tables above credit.
   const assignment = matchFilesToBracket(match.teams, match.files, renames, match.substitutes);
   const bracketFiles = summarizeBracketFiles(assignment);
+  // The same fixture resolution, as a per-file game label for the Most Played
+  // VNs song breakdown — `patt vs Tommy G2`. Keyed by file id, so it serves
+  // the scoped file list below exactly as it serves the full one.
+  const gameLabels = gameLabelsByFileId(match.teams, assignment);
 
   // Stats scope from the round/game selector (see MatchStatsScope + the game
   // chips inside RoundRobinGrid): rounds as `?rounds=3,4,6`, games as a comma
@@ -194,7 +199,7 @@ export default async function MatchPage({
   let vnPlays: VnPlayStats | null = null;
   let vnPlaysError: unknown = null;
   try {
-    vnPlays = computeVnPlays(scopedMatch);
+    vnPlays = computeVnPlays(scopedMatch, gameLabels);
   } catch (err) {
     vnPlaysError = err;
   }

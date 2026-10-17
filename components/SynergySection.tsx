@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { Fragment, useState } from 'react';
+import Link from 'next/link';
 import { teamColor } from '@/lib/team-colors';
 import type { SynergyMember, SynergyStats, SynergyTeam } from '@/lib/synergy';
 import type { PlayerTag } from '@/lib/types';
@@ -220,8 +221,17 @@ function MemberReadsTable({
                   >
                     <td className={`${DENSE_CELL_PAD} text-textDim`}>{i + 1}</td>
                     <td className={DENSE_CELL_PAD}>
+                      {/* Team-tinted name, linked to the player's profile —
+                          same destination as the bracket chips and the other
+                          stats tables on this page. */}
                       <span style={{ color: teamColor(m.teamIndex) }}>
-                        {m.uname}
+                        <Link
+                          href={`/players/${encodeURIComponent(m.uname)}`}
+                          title={`View ${m.uname}'s profile`}
+                          className="hover:underline"
+                        >
+                          {m.uname}
+                        </Link>
                         <PlayerTagBadge uname={m.uname} overrides={playerTags} className="ml-1.5" />
                       </span>
                     </td>

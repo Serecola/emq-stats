@@ -1,4 +1,5 @@
-import { getSongs, getVNSource } from './stats';
+import { getArtistNames, getSongs, getSongTitle, getVNSource, norm } from './stats';
+import { exportDisplayLabel } from './schedule';
 import type { GuessRateStats } from './guess-stats';
 import type { Match } from './types';
 
@@ -29,6 +30,14 @@ import type { Match } from './types';
  * is the first one seen — the export's own main title, the same string the
  * attack modal already shows for that VN — and each row carries the VN's VNDB
  * page for the name to link to.
+ *
+ * Each row also carries its songs — the tracks behind its play count, most
+ * played first — so a reader can see *what* kept a VN on the list: the same
+ * track twice or two different ones. Songs group by the export's own song id
+ * the same way VNs group by source id (title + artist fallback for hand-made
+ * exports), and each remembers which game(s) asked it, labelled by the caller
+ * through `gameLabels` (see gameLabelsByFileId in lib/schedule.ts —
+ * `patt vs Tommy G2`).
  */
 export const VN_MIN_PLAYS = 2;
 export const VN_TOP_N = 10;
@@ -43,6 +52,27 @@ export interface VnPlayRow {
    * the table links the name only when there is somewhere to go.
    */
   url: string | null;
+  /**
+   * Every song from this VN asked in scope, most played first — the tracks
+   * behind `plays`. Same song asked twice is one entry, not two.
+   */
+  songs: VnSongRow[];
+}
+
+export interface VnSongRow {
+  /** the artist line as the export credits it — see getArtistNames */
+  artist: string;
+  /** song title, as the export spells it — see getSongTitle */
+  title: string;
+  /** times this song was asked across the files in scope */
+  plays: number;
+  /**
+   * The game(s) it was asked in, one label per play, in file order — the
+   * bracket fixture label the caller passed in (`patt vs Tommy G2`), falling
+   * back to the file's own label for an upload that never landed on the
+   * bracket. Empty when neither says anything.
+   */
+  games: string[];
 }
 
 export interface VnPlayStats {
@@ -57,24 +87,60 @@ export interface VnPlayStats {
   hasData: boolean;
 }
 
-export function computeVnPlays(match: Pick<Match, 'files'>): VnPlayStats {
-  const plays = new Map<string, { title: string; plays: number; url: string | null }>();
+/**
+ * Identity of one song within a VN: the export's own song id when it carries
+ * one — stable across uploads, so the same track spelled two ways stays one
+ * line — with a normalized title + artist fallback for hand-made exports.
+ * Namespaced so an id can never collide with a title key.
+ */
+function songKey(song: any, artist: string, title: string): string {
+  const raw = song?.Song?.Id;
+  if (raw !== undefined && raw !== null && raw !== '') return `id:${raw}`;
+  return `name:${norm(title)}|${norm(artist)}`;
+}
+
+/**
+ * `gameLabels` maps file id → the game label to show for that file's songs
+ * (see gameLabelsByFileId in lib/schedule.ts). Files absent from it — a
+ * slot-less upload, or a caller that doesn't care — fall back to the file's
+ * own label with the game's `EMQ_SongHistory_` prefix stripped.
+ */
+export function computeVnPlays(
+  match: Pick<Match, 'files'>,
+  gameLabels: Record<string, string> = {}
+): VnPlayStats {
+  const plays = new Map<
+    string,
+    { title: string; plays: number; url: string | null; songs: Map<string, VnSongRow> }
+  >();
   let totalSongs = 0;
 
   for (const file of match.files) {
+    const game = gameLabels[file.id] ?? exportDisplayLabel(file.label);
     for (const song of getSongs(file.data)) {
       totalSongs++;
       const source = getVNSource(song);
       if (!source) continue; // not a VN track
-      const entry = plays.get(source.id);
-      if (entry) {
-        entry.plays++;
-        // A song of a VN seen earlier carried no VNDB link — take the first one
-        // that does rather than leaving the row unlinked because of file order.
-        entry.url ??= source.url;
-      } else {
-        plays.set(source.id, { title: source.title, plays: 1, url: source.url });
+      let entry = plays.get(source.id);
+      if (!entry) {
+        entry = { title: source.title, plays: 0, url: source.url, songs: new Map() };
+        plays.set(source.id, entry);
       }
+      entry.plays++;
+      // A song of a VN seen earlier carried no VNDB link — take the first one
+      // that does rather than leaving the row unlinked because of file order.
+      entry.url ??= source.url;
+
+      const artist = getArtistNames(song);
+      const title = getSongTitle(song);
+      const key = songKey(song, artist, title);
+      let track = entry.songs.get(key);
+      if (!track) {
+        track = { artist, title, plays: 0, games: [] };
+        entry.songs.set(key, track);
+      }
+      track.plays++;
+      if (game && !track.games.includes(game)) track.games.push(game);
     }
   }
 
@@ -83,7 +149,14 @@ export function computeVnPlays(match: Pick<Match, 'files'>): VnPlayStats {
     .sort((a, b) => b.plays - a.plays || a.title.localeCompare(b.title));
 
   return {
-    rows: ranked.slice(0, VN_TOP_N).map((v) => ({ vn: v.title, plays: v.plays, url: v.url })),
+    rows: ranked.slice(0, VN_TOP_N).map((v) => ({
+      vn: v.title,
+      plays: v.plays,
+      url: v.url,
+      songs: [...v.songs.values()].sort(
+        (a, b) => b.plays - a.plays || a.title.localeCompare(b.title) || a.artist.localeCompare(b.artist)
+      ),
+    })),
     totalVns: plays.size,
     qualified: ranked.length,
     totalSongs,
@@ -103,7 +176,9 @@ export function computeVnPlays(match: Pick<Match, 'files'>): VnPlayStats {
  *   ...
  *
  * The VN lines mirror the table's displayed rows (the top-N cut, in rank
- * order). The rig lines mirror the Guess Rate table's Rigs column — each
+ * order); the per-song breakdown the table shows under each row is left out
+ * here — this text is for a standings post, not a track listing. The rig
+ * lines mirror the Guess Rate table's Rigs column — each
  * player's on-list count with its share of their songs at the same 1dp as the
  * table — plus the OP/ED/Ins/OP-ED split of that count. Each rigged song
  * counts once, typed by its primary source (Sources[0].SongTypes, the same

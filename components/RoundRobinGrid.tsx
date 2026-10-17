@@ -337,6 +337,10 @@ function Row({
       highlighted={highlighted}
       onHover={onHover}
       divider={divider}
+      // This grid only renders on the published match page, so its chips are
+      // links to each player's profile. The admin form's bracket (MatchForm)
+      // shares the row but leaves the prop off — see BracketTeamRow.
+      profileLinks
       score={
         <span
           className={`flex-shrink-0 rounded px-1.5 text-xs font-semibold ${
