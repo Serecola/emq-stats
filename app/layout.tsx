@@ -7,6 +7,19 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'EMQ Stats',
   description: 'Stats Viewer for EMQ Tournaments',
+  // Icons come from the RealFaviconGenerator set in public/ — .ico for legacy
+  // browsers, .svg (with a .png fallback) for everything modern, the
+  // apple-touch-icon for iOS home screens, and site.webmanifest for installable
+  // PWA bookmarks (its own icons are the two web-app-manifest PNGs).
+  manifest: '/site.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any', type: 'image/x-icon' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-96x96.png', sizes: '96x96', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 /**

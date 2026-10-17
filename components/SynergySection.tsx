@@ -144,6 +144,17 @@ function TeamSummaryTable({ teams }: { teams: SynergyTeam[] }) {
 }
 
 /**
+ * The pairing label under a member's Enemy Offlist breakdown. `teamLabels` holds
+ * each team's first roster player, and the rate beside it pools every member of
+ * that team, so the line reads "vs Bob's team", never "vs Bob" - the name alone
+ * would read as a head-to-head against one player.
+ */
+function enemyTeamLabel(teamLabels: Map<number, string>, teamIndex: number): string {
+  const label = teamLabels.get(teamIndex);
+  return label ? `${label}'s team` : `Team ${teamIndex + 1}`;
+}
+
+/**
  * The per-member table — the question this section actually exists to answer:
  * how well does each person hit their teammate's list, and the enemy team's?
  *
@@ -255,7 +266,7 @@ function MemberReadsTable({
                         <span className="mt-0.5 block text-[0.68rem] text-textDim">
                           {m.enemyTeams.map((e) => (
                             <span key={e.teamIndex} className="block whitespace-nowrap">
-                              vs {teamLabels.get(e.teamIndex) ?? `Team ${e.teamIndex + 1}`} {e.read.rate.toFixed(1)}% ({e.read.hits}/{e.read.chances})
+                              vs {enemyTeamLabel(teamLabels, e.teamIndex)} {e.read.rate.toFixed(1)}% ({e.read.hits}/{e.read.chances})
                             </span>
                           ))}
                         </span>
