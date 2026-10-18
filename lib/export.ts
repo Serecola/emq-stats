@@ -57,6 +57,8 @@ export interface ExportedMatch {
   /** norm(JSON name) -> roster player they substituted for — see Match. */
   substitutes: Record<string, string>;
   playerRanks: Record<string, number>;
+  /** The tournament's format — see Match.cycles. Absent = legacy inference. */
+  cycles?: number;
   excludeFromStats: boolean;
   fileCount: number;
   files: ExportedMatchFile[];
@@ -122,11 +124,11 @@ type Fixture = BracketMatchup & { displayMatch: number };
  * Every fixture of a tournament keyed by its slot, each tagged with the match's
  * 1-based position inside the round the screen shows. Built from the same
  * generated bracket the editor draws, so a file's round and match in the archive
- * are the ones the admin was looking at.
+ * are the ones the admin was looking at — same format (`cycles`) included.
  */
-function fixturesBySlot(match: Pick<Match, 'teams'>): Map<string, Fixture> {
+function fixturesBySlot(match: Pick<Match, 'teams' | 'cycles'>): Map<string, Fixture> {
   const index = new Map<string, Fixture>();
-  for (const round of generateBracket(match.teams)) {
+  for (const round of generateBracket(match.teams, match.cycles)) {
     round.matchups.forEach((matchup, i) => {
       index.set(matchup.slot, { ...matchup, displayMatch: i + 1 });
     });
@@ -188,7 +190,7 @@ export function buildExport(
     const fixtures = fixturesBySlot(match);
     const fixtureByFileId = new Map<string, Fixture>();
     for (const [slot, file] of Object.entries(
-      matchFilesToBracket(match.teams, match.files, renames, match.substitutes).bySlot
+      matchFilesToBracket(match.teams, match.files, renames, match.substitutes, match.cycles).bySlot
     )) {
       const fixture = fixtures.get(slot);
       if (fixture) fixtureByFileId.set(file.id, fixture);
@@ -225,6 +227,7 @@ export function buildExport(
       renames: match.renames,
       substitutes: match.substitutes ?? {},
       playerRanks: match.playerRanks,
+      ...(match.cycles !== undefined ? { cycles: match.cycles } : {}),
       excludeFromStats: match.excludeFromStats ?? false,
       fileCount: match.files.length,
       files: exported,

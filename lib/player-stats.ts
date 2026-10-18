@@ -25,6 +25,12 @@ export interface PlayerMatchEntry {
   // (see entryExpectation). Absent when the roster wasn't annotated, which is
   // a different thing from a rank of zero.
   rank?: number;
+  // The roster slot they filled in that tournament — the 1-based position of
+  // their name within their team's list (1st listed = T1), the same
+  // derivation as the match page's Tier column (`rosterTier`). Absent when
+  // the roster can't place them: a name in the exports on no team (e.g. a
+  // substitute) has no slot to read, which is a different thing from a T4.
+  tier?: number;
   // VN-only (Mst) reading of an Erumode tournament, carried per entry so a
   // ranged view can pool VN Guess Rate (songs-weighted) and VN Expected Rank
   // (songs-weighted mean of these) exactly like the combined figures. Null
@@ -93,6 +99,52 @@ export function entryRigGr(e: PlayerMatchEntry): number | null {
 export function entryOfflistGr(e: PlayerMatchEntry): number | null {
   const count = e.offlistCount ?? 0;
   return count > 0 ? (100 * (e.offlistHits ?? 0)) / count : null;
+}
+
+/**
+ * A player's tier in one tournament's roster: the 1-based position of their
+ * name inside whichever team lists them (1st listed = T1, 2nd = T2, ...).
+ *
+ * Derived purely from roster order — never stored (see the note on
+ * Match.playerRanks) — and read by both the match page's Tier column and the
+ * player page's Tier Assignment card, so the two views can't drift on what
+ * tier means. Names go through `norm`, the same normalization every other
+ * roster lookup in the app uses. Null when no team lists the player: a
+ * substitute standing in has no slot of their own.
+ */
+export function rosterTier(teams: readonly (readonly string[])[], uname: string): number | null {
+  const key = norm(uname);
+  for (const team of teams) {
+    const idx = team.findIndex((p) => norm(p) === key);
+    if (idx !== -1) return idx + 1;
+  }
+  return null;
+}
+
+/**
+ * How many tournaments in a set of entries placed the player in each roster
+ * slot — the read behind the player page's Tier Assignment card. One
+ * tournament contributes at most one count (the slot its roster listed them
+ * in); entries with no roster slot to read are tallied separately rather than
+ * folded into a tier, so "the roster didn't say" never reads as a
+ * T-something. Counted over whatever range the caller passes — the card hands
+ * it the sliced entries, so Recent / All-Time moves it like every other figure.
+ */
+export interface TierAssignment {
+  /** tournaments per slot, keyed 1 = T1, 2 = T2, ... — a tier nobody filled has no key */
+  byTier: Record<number, number>;
+  /** entries in the set whose roster carried no slot for the player */
+  unlisted: number;
+}
+
+export function tierAssignment(entries: PlayerMatchEntry[]): TierAssignment {
+  const byTier: Record<number, number> = {};
+  let unlisted = 0;
+  for (const e of entries) {
+    if (e.tier === undefined) unlisted++;
+    else byTier[e.tier] = (byTier[e.tier] ?? 0) + 1;
+  }
+  return { byTier, unlisted };
 }
 
 export interface NgmcAggregate {
@@ -279,6 +331,9 @@ export function computeAllPlayerStats(
           // (`playerRanks[norm(uname)]`), so this tournament's history shows the
           // same rank that tournament's own table graded them against.
           rank: match.playerRanks?.[key],
+          // Roster slot for the Tier Assignment card (see rosterTier);
+          // absent when no team lists this player in the roster.
+          tier: rosterTier(match.teams, row.uname) ?? undefined,
           vnGuessRate: row.vnGuessRate,
           vnPerformance: row.vnPerformance,
           perType: { ...(guessStats.activeTypes.length > 0 ? row.perType : {}) },
@@ -319,6 +374,8 @@ export function computeAllPlayerStats(
           // Same lookup as the Erumode branch above, and the same one the match
           // Guess Rate table does: playerRanks keyed by normalized username.
           rank: match.playerRanks?.[norm(row.uname)],
+          // Same roster-slot read as the Erumode branch above.
+          tier: rosterTier(match.teams, row.uname) ?? undefined,
           // NGMC asks one question per song and still has a list, so
           // the rig counts come along for Rigs / Rig GR in the player's history.
           // The offlist pair stays unset — NGMC doesn't track off-list guessing.

@@ -16,6 +16,7 @@ import {
   entryRigGr,
   slicePlayerSummary,
   SPLIT_TYPES,
+  tierAssignment,
   type PlayerMatchEntry,
 } from '@/lib/player-stats';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
@@ -225,7 +226,7 @@ export default async function PlayerPage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Guess Rate" value={pct(view.erumode.overallGuessRate)} />
-            <StatCard label="Songs" value={String(view.erumode.totalSongs)} />
+            <TierAssignmentCard entries={erumodeEntries} />
             {winRateCard(record, winRate)}
           </div>
           <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
@@ -237,7 +238,7 @@ export default async function PlayerPage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">NGMC</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <StatCard label="Guess Rate" value={pct(view.ngmc.overallGuessRate)} />
-            <StatCard label="Songs" value={String(view.ngmc.totalSongs)} />
+            <TierAssignmentCard entries={ngmcEntries} />
             <StatCard
               label="Attacks"
               value={
@@ -476,6 +477,77 @@ function MatchHistoryTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Tier chip ink — the same four hues the match Guess Rate table tints tier
+// rows with (see TIER_BG in components/GuessRateTable.tsx), so T1 reads the
+// same red here as it does there. Tiers beyond T4 (a 5-deep team) have no
+// established hue and stay neutral.
+const TIER_INK: Record<number, string> = {
+  1: 'text-taken',
+  2: 'text-accent',
+  3: 'text-blocked',
+  4: 'text-promote',
+};
+
+/**
+ * The Tier Assignment card — how many tournaments in view slotted the player
+ * into each position of their team's roster, T1 being first on that list. The
+ * same per-tournament derivation as the match page's Tier column
+ * (`rosterTier`), counted over exactly the entries this section's history
+ * table shows, so the Recent / All-Time switch moves it like every other card.
+ *
+ * Tournaments whose roster can't place the player (a substitute standing in,
+ * an unannotated paste) are never counted as a tier — they show up in the
+ * hint as "N without a roster slot" instead of quietly landing in some T.
+ */
+function TierAssignmentCard({ entries }: { entries: PlayerMatchEntry[] }) {
+  const { byTier, unlisted } = tierAssignment(entries);
+  // T1..T4 are always offered so the card keeps one shape across players; a
+  // T5+ only appears once a roster was actually that deep.
+  const tiers = [
+    1,
+    2,
+    3,
+    4,
+    ...Object.keys(byTier)
+      .map(Number)
+      .filter((t) => t > 4)
+      .sort((a, b) => a - b),
+  ];
+  const total = tiers.reduce((s, t) => s + (byTier[t] ?? 0), 0);
+  return (
+    <StatCard
+      label="Tier Assignment"
+      title="Tournaments in view placed into each roster slot — T1 is first on their team's list (the same Tier the match page shows)"
+      value={
+        total === 0 ? (
+          <span className="text-textDim">—</span>
+        ) : (
+          <span className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            {tiers.map((t) => {
+              const n = byTier[t] ?? 0;
+              return (
+                <span key={t} className="whitespace-nowrap">
+                  <span className="text-textDim">T{t}</span>{' '}
+                  <span className={n === 0 ? 'text-textDim' : (TIER_INK[t] ?? 'text-text')}>{n}</span>
+                </span>
+              );
+            })}
+          </span>
+        )
+      }
+      hint={
+        total === 0
+          ? unlisted > 0
+            ? `${unlisted} tournament${unlisted === 1 ? '' : 's'} in view, none on a roster`
+            : 'no tournaments in view'
+          : unlisted > 0
+            ? `${unlisted} more without a roster slot`
+            : `over ${total} tournament${total === 1 ? '' : 's'} in view`
+      }
+    />
   );
 }
 

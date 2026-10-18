@@ -3,7 +3,13 @@
 import { useMemo, useState } from 'react';
 import { parsePlayerList, parseRankList, roundToTenth } from '@/lib/teams';
 import { balanceTeams, mergeHiddenRanks, type DraftPlayer, type TeamDraft } from '@/lib/balance';
-import { VALID_TEAM_COUNTS, validTeamCountsPhrase } from '@/lib/format';
+import {
+  TWO_TEAM_ROUNDS_MAX,
+  TWO_TEAM_ROUNDS_MIN,
+  isValidCycles,
+  resolveCycles,
+  validTeamCountsPhrase,
+} from '@/lib/format';
 
 const norm = (s: string) => s.toLowerCase().trim();
 
@@ -58,6 +64,17 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
 ];
 
 /**
+ * The format pills for a draft of 3+ teams: how many times every pair meets.
+ * With only 2 teams the same value is "Rounds N" (how many times the lone
+ * pair plays, 2–10) and the pills are replaced by a number input. Twice is
+ * the default — see defaultCycles in lib/format.ts.
+ */
+const FORMAT_OPTIONS: { cycles: 1 | 2; label: string }[] = [
+  { cycles: 1, label: 'Round Robin Once' },
+  { cycles: 2, label: 'Round Robin Twice' },
+];
+
+/**
  * Auto-draft helper for the Teams box. The host pastes the `players.txt`
  * list (names, optionally with their letter tier), picks which rank source
  * to balance with, then picks one of the balanced splits the partitioner
@@ -84,6 +101,8 @@ export default function TeamDrafter({
   expectedRanks,
   vnExpectedRanks,
   savedRanksLabel,
+  cycles,
+  onCyclesChange,
 }: {
   onApply: (teams: string[][], ranks: Record<string, number>) => void;
   savedRanks?: Record<string, number> | null;
@@ -94,10 +113,22 @@ export default function TeamDrafter({
   // Pasted-table source.
   vnExpectedRanks?: Record<string, number> | null;
   savedRanksLabel?: string;
+  // The tournament's format — how many times each pair of teams meets (see
+  // lib/format.ts). Owned by the form (it is saved with the match, and the
+  // bracket preview below the Teams box reads it too), so it arrives here as
+  // a controlled value: 1 = Round Robin Once, 2 = Round Robin Twice (the
+  // default), 2–10 = "Rounds N" once a draft leaves only 2 teams. Undefined
+  // is "no explicit format yet" — the display resolves it through
+  // resolveCycles, same as the schedule does.
+  cycles: number | undefined;
+  onCyclesChange: (cycles: number) => void;
 }) {
   const [playersText, setPlayersText] = useState('');
   const [ranksText, setRanksText] = useState('');
-  const [teamSize, setTeamSize] = useState(3);
+  // Kept as the raw input string so half-typed values ("", "0") stay
+  // editable; sizeCheck below decides whether the current text is a legal
+  // size for the roster.
+  const [teamSizeText, setTeamSizeText] = useState('3');
   const [drafts, setDrafts] = useState<TeamDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
@@ -202,22 +233,53 @@ export default function TeamDrafter({
     return bits;
   }, [counts, rankSource]);
 
-  // Offer only the team sizes that actually split this roster into a legal
-  // tournament (3, 4 or 6 teams — see lib/format.ts), so a generated draft
-  // always fits the bracket: nine ranked players offer size 3, i.e. the
-  // three-teams-of-three 3v3v3 format.
-  const sizeOptions = useMemo(() => {
-    const sizes: number[] = [];
-    for (let size = 2; size <= ranked.length; size++) {
-      const teams = ranked.length / size;
-      if (Number.isInteger(teams) && (VALID_TEAM_COUNTS as readonly number[]).includes(teams)) {
-        sizes.push(size);
-      }
+  // The team size is a free input rather than a menu of presets: a legal
+  // size divides the ranked player count exactly AND leaves an even number
+  // of teams (see lib/format.ts), so every generated draft fits the bracket
+  // and the format picker below. Checked live so the admin sees why a size
+  // can't work the moment they type it, not only when they generate.
+  const sizeCheck = useMemo(() => {
+    const n = ranked.length;
+    const text = teamSizeText.trim();
+    const size = Number(text);
+    if (!text || !Number.isInteger(size) || size < 1) {
+      return { ok: false as const, size: null, teams: null, reason: 'Enter a team size.' };
     }
-    return sizes;
-  }, [ranked.length]);
+    if (n % size !== 0) {
+      return {
+        ok: false as const,
+        size,
+        teams: null,
+        reason: `${n} player${n !== 1 ? 's' : ''} don't divide evenly into teams of ${size}.`,
+      };
+    }
+    const teams = n / size;
+    if (teams < 2) {
+      return {
+        ok: false as const,
+        size,
+        teams,
+        reason: 'A tournament needs at least 2 teams — try a smaller size.',
+      };
+    }
+    if (teams % 2 !== 0) {
+      return {
+        ok: false as const,
+        size,
+        teams,
+        reason: `${teams} teams is odd — the team count must be even.`,
+      };
+    }
+    return { ok: true as const, size, teams };
+  }, [ranked.length, teamSizeText]);
 
-  const effectiveSize = sizeOptions.includes(teamSize) ? teamSize : sizeOptions[0] ?? 0;
+  // What the format control applies to: the team count this size would
+  // produce (the Teams box catches up on Apply). While the size is invalid
+  // there is no count to format for, so the pills fall back to the raw
+  // value's validity against a 4-team shape — display only; Generate is
+  // blocked until sizeCheck passes anyway.
+  const draftTeamCount = sizeCheck.ok ? sizeCheck.teams : null;
+  const formatCycles = resolveCycles(draftTeamCount ?? 4, cycles);
 
   function generate() {
     setApplied(null);
@@ -233,15 +295,16 @@ export default function TeamDrafter({
       );
       return;
     }
-    if (!effectiveSize) {
+    if (!sizeCheck.ok) {
       setDrafts([]);
       setError(
-        `${ranked.length} ranked player${ranked.length !== 1 ? 's' : ''} can't be split into ` +
-          `${validTeamCountsPhrase()} equal teams — a tournament needs exactly ${validTeamCountsPhrase()} teams.`
+        `${ranked.length} ranked player${ranked.length !== 1 ? 's' : ''} can't be drafted into ` +
+          `teams of ${sizeCheck.size ?? 'that size'} — a team size must divide the player count evenly ` +
+          `and leave ${validTeamCountsPhrase()}. ${sizeCheck.reason}`
       );
       return;
     }
-    const result = balanceTeams(ranked, effectiveSize);
+    const result = balanceTeams(ranked, sizeCheck.size);
     setDrafts(result);
     if (!result.length) setError('Could not find a balanced split for that roster.');
   }
@@ -412,26 +475,73 @@ export default function TeamDrafter({
             <span className="text-textDim"> ({summaryBits.join(', ')})</span>
           )}
         </span>
-        {sizeOptions.length > 0 && (
-          <label className="flex items-center gap-1.5 text-xs text-textMuted">
-            Players per team
-            <select
-              value={effectiveSize}
-              onChange={(e) => {
-                setTeamSize(Number(e.target.value));
-                setDrafts([]);
-                setApplied(null);
-              }}
-              className="rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
-            >
-              {sizeOptions.map((size) => (
-                <option key={size} value={size}>
-                  {size} ({ranked.length / size} teams)
-                </option>
-              ))}
-            </select>
-          </label>
+        <label className="flex items-center gap-1.5 text-xs text-textMuted">
+          Players per team
+          <input
+            type="number"
+            min={1}
+            value={teamSizeText}
+            onChange={(e) => {
+              setTeamSizeText(e.target.value);
+              setDrafts([]);
+              setApplied(null);
+            }}
+            className="w-16 rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
+          />
+        </label>
+        {/* Live verdict on the typed size: the team count it produces when
+            legal, the reason it can't when not. */}
+        {ranked.length > 0 && (
+          <span className={sizeCheck.ok ? 'text-xs text-textDim' : 'text-xs text-taken'}>
+            {sizeCheck.ok ? `${sizeCheck.teams} teams` : sizeCheck.reason}
+          </span>
         )}
+        {/* Format — how many times each pair of teams meets, saved with the
+            match as its `cycles`. With only 2 teams there is one pair, so the
+            same value reads as "Rounds N": how many times the two play. */}
+        <label className="flex items-center gap-1.5 text-xs text-textMuted">
+          Format
+          {draftTeamCount === 2 ? (
+            <span className="flex items-center gap-1.5">
+              Rounds
+              <input
+                type="number"
+                min={TWO_TEAM_ROUNDS_MIN}
+                max={TWO_TEAM_ROUNDS_MAX}
+                value={formatCycles}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isInteger(value)) onCyclesChange(value);
+                }}
+                onBlur={() => {
+                  // Snap an out-of-range value (typed past the max, or left
+                  // over from another team count) back to a legal one.
+                  // formatCycles is already the resolved display value, so a
+                  // raw pick that doesn't match it is what needs snapping.
+                  if (formatCycles !== cycles) onCyclesChange(formatCycles);
+                }}
+                className="w-16 rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
+              />
+            </span>
+          ) : (
+            <span className="flex gap-1.5">
+              {FORMAT_OPTIONS.map((option) => (
+                <button
+                  key={option.cycles}
+                  type="button"
+                  onClick={() => onCyclesChange(option.cycles)}
+                  className={`rounded-full px-2.5 py-1 text-[0.65rem] font-medium transition-colors ${
+                    formatCycles === option.cycles
+                      ? 'bg-accent text-bg'
+                      : 'border border-border text-textMuted hover:border-textSub hover:text-text'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </span>
+          )}
+        </label>
         <button
           type="button"
           onClick={generate}

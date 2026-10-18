@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMatch, listMatchSummaries } from '@/lib/store';
 import { hasAdminSession } from '@/lib/admin-session';
 import { isValidDate } from '@/lib/match-title';
-import { isValidTeamCount, validTeamCountsPhrase } from '@/lib/format';
+import { isValidCycles, isValidTeamCount, resolveCycles, validTeamCountsPhrase } from '@/lib/format';
 import { REGIONS, MODES, SUBMODES_BY_MODE } from '@/lib/types';
 import type { MatchInput } from '@/lib/types';
 
@@ -52,6 +52,20 @@ export async function POST(req: NextRequest) {
   if (!isValidTeamCount(body.teams.length)) {
     return NextResponse.json(
       { error: `Tournaments must have exactly ${validTeamCountsPhrase()} teams (got ${body.teams.length}).` },
+      { status: 400 }
+    );
+  }
+  // The format must make a legal schedule for this roster: an explicit pick
+  // wins, otherwise the historical inference for the count (the same rule the
+  // form submits with — see components/MatchForm.tsx). A 3-team 3v3v3 runs no
+  // round robin so it carries no format to check.
+  if (
+    body.teams.length !== 3 &&
+    body.cycles !== undefined &&
+    !isValidCycles(body.teams.length, resolveCycles(body.teams.length, body.cycles))
+  ) {
+    return NextResponse.json(
+      { error: `That format doesn't fit ${body.teams.length} teams.` },
       { status: 400 }
     );
   }

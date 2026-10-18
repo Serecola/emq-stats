@@ -36,6 +36,12 @@ const MATCH_COLUMN_MIGRATIONS: [column: string, statement: string][] = [
   // read as '{}' (no substitutes) with nothing to migrate.
   ['substitutes', "ALTER TABLE matches ADD COLUMN substitutes TEXT NOT NULL DEFAULT '{}'"],
   ['player_ranks', "ALTER TABLE matches ADD COLUMN player_ranks TEXT NOT NULL DEFAULT '{}'"],
+  // The tournament's format: how many times each pair of teams meets —
+  // 1 (Round Robin Once), 2 (Round Robin Twice, the default), or 2–10 for a
+  // 2-team "Rounds N" series. NULL on rows written before it existed (and on
+  // 3-team 3v3v3 tournaments); those read via resolveCycles (lib/format.ts),
+  // which infers the historical schedule from the team count.
+  ['cycles', 'ALTER TABLE matches ADD COLUMN cycles INTEGER'],
   // Counted once at write time so list views can show "3 files" without
   // reading (and parsing) the `files` payload they don't render.
   ['file_count', 'ALTER TABLE matches ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0'],
@@ -77,7 +83,8 @@ export function ensureSchema(): Promise<void> {
           substitutes TEXT NOT NULL DEFAULT '{}',
           player_ranks TEXT NOT NULL DEFAULT '{}',
           file_count INTEGER NOT NULL DEFAULT 0,
-          exclude_from_stats INTEGER NOT NULL DEFAULT 0
+          exclude_from_stats INTEGER NOT NULL DEFAULT 0,
+          cycles INTEGER
         )`,
         'CREATE INDEX IF NOT EXISTS idx_matches_date_created ON matches (date DESC, created_at DESC)',
         `CREATE TABLE IF NOT EXISTS data_version (

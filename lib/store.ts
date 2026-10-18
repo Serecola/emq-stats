@@ -42,6 +42,10 @@ interface MatchRow {
   player_ranks: string;
   file_count: number;
   exclude_from_stats?: number | null;
+  // The tournament's format (pair meetings); NULL on rows from before it
+  // existed — read as undefined so the schedule falls back to the
+  // team-count inference in lib/format.ts.
+  cycles?: number | null;
 }
 
 function rowToMatch(row: MatchRow, aliases: PlayerAliases = {}): Match {
@@ -69,11 +73,21 @@ function rowToMatch(row: MatchRow, aliases: PlayerAliases = {}): Match {
     // aliases are folded under the match's own renames for this resolution —
     // a file whose raw JSON names its players through an alias still finds
     // its fixture — while the `renames` field itself stays exactly as stored:
-    // aliases are global and are never baked into a match.
-    files: withAssumedZeroScores(teams, JSON.parse(row.files), withAliases(renames, aliases), substitutes),
+    // aliases are global and are never baked into a match. The format
+    // (`cycles`) rides along so a fixture can be found on a bracket of any
+    // shape — a 2-team series' second round is a different slot set than a
+    // single round robin's.
+    files: withAssumedZeroScores(
+      teams,
+      JSON.parse(row.files),
+      withAliases(renames, aliases),
+      substitutes,
+      row.cycles
+    ),
     renames,
     substitutes,
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
+    cycles: row.cycles ?? undefined,
     excludeFromStats: Number(row.exclude_from_stats ?? 0) === 1,
   };
 }
@@ -92,13 +106,14 @@ function rowToMatchSummary(row: MatchRow): MatchSummary {
     renames: row.renames ? JSON.parse(row.renames) : {},
     substitutes: row.substitutes ? JSON.parse(row.substitutes) : {},
     playerRanks: row.player_ranks ? JSON.parse(row.player_ranks) : {},
+    cycles: row.cycles ?? undefined,
     fileCount: Number(row.file_count ?? 0),
     excludeFromStats: Number(row.exclude_from_stats ?? 0) === 1,
   };
 }
 
 const SELECT_COLUMNS =
-  'id, title, name, date, region, mode, submode, created_at, teams, files, renames, substitutes, player_ranks, file_count, exclude_from_stats';
+  'id, title, name, date, region, mode, submode, created_at, teams, files, renames, substitutes, player_ranks, cycles, file_count, exclude_from_stats';
 
 // Tour display order: newest date first; tours sharing a date run in play
 // order NA, then EU, then Asia (see REGION_ORDER in lib/types.ts); creation
@@ -111,7 +126,7 @@ const MATCH_ORDER_BY = `ORDER BY date DESC,
 // ~2 MB, and list views only render the count — which `file_count` has held
 // since it was written, so they never touch the payload at all.
 const SUMMARY_COLUMNS =
-  'id, title, name, date, region, mode, submode, created_at, teams, renames, substitutes, player_ranks, file_count, exclude_from_stats';
+  'id, title, name, date, region, mode, submode, created_at, teams, renames, substitutes, player_ranks, cycles, file_count, exclude_from_stats';
 
 // A match feeds player aggregates (last-5 / all-time stats, rank rows,
 // Expected Ranks for the autodrafter) only when it isn't opted out. Every
@@ -240,11 +255,14 @@ export async function createMatch(input: MatchInput): Promise<Match> {
     renames: input.renames ?? {},
     substitutes: input.substitutes ?? {},
     playerRanks: input.playerRanks ?? {},
+    // Undefined (a 3-team 3v3v3, an old client) stores NULL, which reads back
+    // as "no explicit format" and falls back to the team-count inference.
+    cycles: input.cycles,
     excludeFromStats: input.excludeFromStats === true,
   };
   const insert: InStatement = {
-    sql: `INSERT INTO matches (id, title, name, date, region, mode, submode, created_at, teams, files, renames, substitutes, player_ranks, file_count, exclude_from_stats)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO matches (id, title, name, date, region, mode, submode, created_at, teams, files, renames, substitutes, player_ranks, cycles, file_count, exclude_from_stats)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       match.id,
       match.title,
@@ -259,6 +277,7 @@ export async function createMatch(input: MatchInput): Promise<Match> {
       JSON.stringify(match.renames),
       JSON.stringify(match.substitutes),
       JSON.stringify(match.playerRanks),
+      match.cycles ?? null,
       match.files.length,
       match.excludeFromStats ? 1 : 0,
     ],
@@ -288,6 +307,10 @@ export async function updateMatch(
     renames: input.renames ?? {},
     substitutes: input.substitutes ?? {},
     playerRanks: input.playerRanks ?? {},
+    // An undefined input keeps the stored format (the same rule as
+    // excludeFromStats below), so a client that doesn't send one never wipes
+    // a format the admin picked earlier.
+    cycles: input.cycles === undefined ? existing.cycles : input.cycles,
     // The editor form no longer sends this (the toggle lives on the Tour
     // Manager row) — an undefined input keeps the stored flag, so a re-save
     // never silently re-includes an excluded tour.
@@ -296,7 +319,7 @@ export async function updateMatch(
   };
   const update: InStatement = {
     sql: `UPDATE matches
-          SET title = ?, name = ?, date = ?, region = ?, mode = ?, submode = ?, teams = ?, files = ?, renames = ?, substitutes = ?, player_ranks = ?, file_count = ?, exclude_from_stats = ?
+          SET title = ?, name = ?, date = ?, region = ?, mode = ?, submode = ?, teams = ?, files = ?, renames = ?, substitutes = ?, player_ranks = ?, cycles = ?, file_count = ?, exclude_from_stats = ?
           WHERE id = ?`,
     args: [
       updated.title,
@@ -310,6 +333,7 @@ export async function updateMatch(
       JSON.stringify(updated.renames),
       JSON.stringify(updated.substitutes),
       JSON.stringify(updated.playerRanks),
+      updated.cycles ?? null,
       updated.files.length,
       updated.excludeFromStats ? 1 : 0,
       id,

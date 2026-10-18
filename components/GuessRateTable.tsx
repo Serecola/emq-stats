@@ -6,6 +6,7 @@ import type { ErumodeGuessRow, GuessRateStats, NgmcGuessRow } from '@/lib/guess-
 import type { PlayerTag, Team } from '@/lib/types';
 import { expectationFromDiff } from '@/lib/expectation';
 import { MIN_GAMES_FOR_WINRATE, type PlayerGameRecord } from '@/lib/results';
+import { rosterTier } from '@/lib/player-stats';
 import { teamColor } from '@/lib/team-colors';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import ColumnVisibilityMenu from './ColumnVisibilityMenu';
@@ -244,17 +245,12 @@ export default function GuessRateTable({
   winRates?: Record<string, { record: PlayerGameRecord; winRate: number | null }>;
 }) {
   // Tier = ordinal position within the player's team (1st listed = T1, 2nd
-  // = T2, ...), derived purely from roster order — never stored. Rank =
-  // whatever number was parsed from "(N)" next to their name in the
-  // pasted roster, independent of team position.
-  const tierOf = (uname: string): number | null => {
-    const key = norm(uname);
-    for (const team of teams) {
-      const idx = team.findIndex((p) => norm(p) === key);
-      if (idx !== -1) return idx + 1;
-    }
-    return null;
-  };
+  // = T2, ...), derived purely from roster order — never stored. The walk
+  // lives in `rosterTier` so this column and the player page's Tier
+  // Assignment card read the same event. Rank = whatever number was parsed
+  // from "(N)" next to their name in the pasted roster, independent of team
+  // position.
+  const tierOf = (uname: string): number | null => rosterTier(teams, uname);
   const rankOf = (uname: string): number | null => playerRanks[norm(uname)] ?? null;
 
   // Which team the player belongs to (index into `teams`), or -1 when they're

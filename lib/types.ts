@@ -100,6 +100,14 @@ export interface Match {
   // from Tier (a player's ordinal position within their team), which is
   // derived from `teams` order and never stored.
   playerRanks: Record<string, number>;
+  // How many times each pair of teams meets — the tournament's format:
+  // 1 = "Round Robin Once", 2 = "Round Robin Twice" (the default), and for a
+  // 2-team tournament 2–10 = "Rounds N", how many times the two teams play
+  // each other. Absent on matches saved before it existed (and on 3-team
+  // 3v3v3 tournaments, which have no pairings) — those read through
+  // resolveCycles in lib/format.ts, which infers the historical schedule
+  // from the team count. See lib/format.ts for the legality rules.
+  cycles?: number;
   // Tournament stays visible (lists, its own page, exports) but contributes
   // to no player aggregates — last-5 nor all-time. See lib/store.ts
   // `statsMatches` for the single filter every derivation goes through.
@@ -157,6 +165,10 @@ export interface MatchInput {
   renames: Record<string, string>;
   substitutes?: Record<string, string>;
   playerRanks: Record<string, number>;
+  // The tournament's format — see Match.cycles. Optional: a caller that
+  // leaves it undefined (an old client, a 3-team 3v3v3) stores no value and
+  // the schedule falls back to the historical team-count inference.
+  cycles?: number;
   excludeFromStats?: boolean;
 }
 

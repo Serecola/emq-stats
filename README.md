@@ -454,6 +454,15 @@ not a 404: their unfiltered name still resolves, and the same chips stay on
 screen so the way forward is to pick a mode where they do have tournaments. Only
 a name that matches nobody at all 404s.
 
+The stat cards are **Guess Rate**, **Tier Assignment** and **Winrate** (plus
+NGMC's Attacks and Blocks). **Tier Assignment** counts, over exactly the
+tournaments in view, how many placed the player in each slot of their team's
+roster — T1 being first on that list, the same derivation as the match Guess
+Rate table's Tier column (`rosterTier` in `lib/player-stats.ts`, which both
+views read). A tournament whose roster can't place the player (a substitute
+standing in, an unannotated roster paste) has no slot to count and is
+footnoted on the card instead of being folded into a tier.
+
 The per-tournament history table carries the same figures that tournament's own
 Guess Rate table shows for that player, one row per tournament: **Rank** (the
 "(N)" beside their name in that tournament's roster), **Perf** (their Performance
@@ -665,7 +674,7 @@ autodraft reads the Erumode Normal tables (see
   | Table | What it covers |
   | --- | --- |
   | `/matches/<id>` → Guess Rate | This tournament, and whatever the round / game filter is scoped to — the WR column sits after Games and follows that scope. |
-  | `/players/<name>` | The Winrate stat card beside Guess Rate / Songs / Attacks / Blocks, over the tournaments the page is showing (Recent or All-Time), with the W-L-T record underneath. |
+  | `/players/<name>` | The Winrate stat card beside Guess Rate / Tier Assignment / Attacks / Blocks, over the tournaments the page is showing (Recent or All-Time), with the W-L-T record underneath. |
   | `/players` | The WR column of the players list, over the range toggle above it. |
   | `/admin/players` | The Winrate column of the Player Manager, same range. |
 

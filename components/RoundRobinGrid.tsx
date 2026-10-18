@@ -64,6 +64,7 @@ export default function RoundRobinGrid({
   files,
   scope,
   matchPath,
+  cycles,
 }: {
   teams: Team[];
   files: Record<string, BracketFileSummary>;
@@ -73,8 +74,12 @@ export default function RoundRobinGrid({
   // a plain navigation — no client state to keep in sync with the tables.
   scope: StatsScope | null;
   matchPath?: string;
+  // The tournament's format — how many times each pair meets (see
+  // lib/format.ts). Optional: absent falls back to the historical
+  // team-count inference, which is exactly what old matches read with.
+  cycles?: number;
 }) {
-  const rounds = generateBracket(teams);
+  const rounds = generateBracket(teams, cycles);
 
   // Team index whose cells are highlighted right now, or null when the pointer
   // is off the bracket entirely. Cleared on the wrapper's mouseleave rather than

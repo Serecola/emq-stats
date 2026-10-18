@@ -97,12 +97,18 @@ export default async function MatchPage({
   // The alias-folded `renames` (not match.renames) drive the detection, so a
   // file whose JSON names its players through a global alias still resolves
   // to its two teams — the same attach the stats tables above credit.
-  const assignment = matchFilesToBracket(match.teams, match.files, renames, match.substitutes);
+  const assignment = matchFilesToBracket(
+    match.teams,
+    match.files,
+    renames,
+    match.substitutes,
+    match.cycles
+  );
   const bracketFiles = summarizeBracketFiles(assignment);
   // The same fixture resolution, as a per-file game label for the Most Played
   // VNs song breakdown — `patt vs Tommy G2`. Keyed by file id, so it serves
   // the scoped file list below exactly as it serves the full one.
-  const gameLabels = gameLabelsByFileId(match.teams, assignment);
+  const gameLabels = gameLabelsByFileId(match.teams, assignment, match.cycles);
 
   // Stats scope from the round/game selector (see MatchStatsScope + the game
   // chips inside RoundRobinGrid): rounds as `?rounds=3,4,6`, games as a comma
@@ -118,10 +124,11 @@ export default async function MatchPage({
     match.files,
     renames,
     scope,
-    match.substitutes
+    match.substitutes,
+    match.cycles
   );
   const scopedMatch = { ...match, files: scopedFiles };
-  const scopedLabel = scopeLabel(scope, match.teams);
+  const scopedLabel = scopeLabel(scope, match.teams, match.cycles);
 
   // Computed synchronously (not inside a nested async component) so a
   // thrown error is actually catchable here — Server Component children
@@ -289,6 +296,7 @@ export default async function MatchPage({
           files={bracketFiles}
           scope={scope}
           matchPath={`/matches/${match.id}`}
+          cycles={match.cycles}
         />
       </section>
 
@@ -418,7 +426,11 @@ function parseStatsScope(
  * picks, the fixtures' own bracket labels ("Round 5 Game 1, Round 6 Game 1")
  * for game picks, nothing for the full scope.
  */
-function scopeLabel(scope: StatsScope, teams: Parameters<typeof generateBracket>[0]): string {
+function scopeLabel(
+  scope: StatsScope,
+  teams: Parameters<typeof generateBracket>[0],
+  cycles?: number
+): string {
   if (isFullScope(scope)) return '';
   if (scope.rounds.length > 0) {
     return `Round${scope.rounds.length > 1 ? 's' : ''} ${scope.rounds.join(', ')}`;
@@ -428,7 +440,7 @@ function scopeLabel(scope: StatsScope, teams: Parameters<typeof generateBracket>
   // validated in parseStatsScope; the fallback only exists so a label
   // survives any future path that skips that check.
   const names = new Map<string, string>();
-  for (const round of generateBracket(teams)) {
+  for (const round of generateBracket(teams, cycles)) {
     round.matchups.forEach((m, i) => {
       names.set(m.slot, `Round ${round.displayRound} Game ${i + 1}`);
     });
