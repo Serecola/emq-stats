@@ -19,12 +19,13 @@ import PlayerTagBadge from './PlayerTagBadge';
 import { resolvePlayerTag } from '@/lib/player-tags';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
 
-type SortKey = 'uname' | 'read' | 'readBy';
+type SortKey = 'uname' | 'read' | 'readBy' | 'teammateMatches';
 
 const KEY_OF: Record<SortKey, (p: PartnerSynergy) => number | string> = {
   uname: (p) => p.uname.toLowerCase(),
   read: (p) => p.read.rate,
   readBy: (p) => p.readBy.rate,
+  teammateMatches: (p) => p.teammateMatches,
 };
 
 /**
@@ -238,6 +239,11 @@ function PartnerTable({
               <th className={`${DENSE_CELL_PAD} w-8 text-left font-medium`}>#</th>
               <th className={`${DENSE_CELL_PAD} text-left font-medium`}>Player</th>
               {header(
+                'Times teamed',
+                'teammateMatches',
+                'Tournaments in view where you two played on the same team'
+              )}
+              {header(
                 'You snipe them',
                 'read',
                 'Songs you got right that were on their list'
@@ -260,6 +266,9 @@ function PartnerTable({
                 </td>
                 <td className={DENSE_CELL_PAD}>
                   <PartnerName partner={p} filter={filter} playerTags={playerTags} />
+                </td>
+                <td className={`${DENSE_CELL_PAD} text-right tabular-nums`}>
+                  {p.teammateMatches}
                 </td>
                 <td className={`${DENSE_CELL_PAD} text-right`}>
                   <ReadValue read={p.read} color />

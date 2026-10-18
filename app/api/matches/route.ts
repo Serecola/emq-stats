@@ -57,10 +57,9 @@ export async function POST(req: NextRequest) {
   }
   // The format must make a legal schedule for this roster: an explicit pick
   // wins, otherwise the historical inference for the count (the same rule the
-  // form submits with — see components/MatchForm.tsx). A 3-team 3v3v3 runs no
-  // round robin so it carries no format to check.
+  // form submits with — see components/MatchForm.tsx). 3-team 3v3v3 carries
+  // its Rounds count like the 2-team series does.
   if (
-    body.teams.length !== 3 &&
     body.cycles !== undefined &&
     !isValidCycles(body.teams.length, resolveCycles(body.teams.length, body.cycles))
   ) {

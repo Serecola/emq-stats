@@ -55,9 +55,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     );
   }
   // Same format rule as the create route above: the pick must make a legal
-  // schedule for this roster (a 3-team 3v3v3 carries no format to check).
+  // schedule for this roster (a 3-team 3v3v3 carries its Rounds count).
   if (
-    body.teams.length !== 3 &&
     body.cycles !== undefined &&
     !isValidCycles(body.teams.length, resolveCycles(body.teams.length, body.cycles))
   ) {

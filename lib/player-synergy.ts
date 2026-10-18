@@ -43,6 +43,8 @@ export interface PartnerSynergy {
   read: SynergyRead;
   /** this partner landing this player's list */
   readBy: SynergyRead;
+  /** tournaments in scope where the two played on the same team */
+  teammateMatches: number;
 }
 
 export interface PlayerSynergyStats {
@@ -69,6 +71,7 @@ interface PartnerAccum {
   uname: string;
   read: Cell;
   readBy: Cell;
+  teammateMatches: number;
 }
 
 function emptyCell(): Cell {
@@ -106,6 +109,7 @@ export function computePlayerSynergy(
       uname: display,
       read: emptyCell(),
       readBy: emptyCell(),
+      teammateMatches: 0,
     };
     partners.set(key, created);
     return created;
@@ -132,6 +136,24 @@ export function computePlayerSynergy(
       if (roster.has(key) || !roster.has(norm(target))) continue;
       roster.set(key, key); // placeholder until the export supplies casing
       subKeys.add(key);
+    }
+
+    // Which team everyone is on this tournament, keyed by normalized
+    // *roster* name. Roster keys can be aliases (a page reached under a new
+    // name still lists the roster's spelling), so both sides go through the
+    // folded rename map — the same normalization the song walk resolves
+    // answers with — while `roster`/`selfKey` keep their own keys for the
+    // partner identity below. A substitute resolves to the team of the roster
+    // player they stood in for. Teammates for a whole tournament rather than
+    // per song, so a game someone sat out doesn't cost them the pairing.
+    const teamOf = new Map<string, number>();
+    match.teams.forEach((team, teamIndex) => {
+      for (const name of team) teamOf.set(norm(renames[norm(name)] || name), teamIndex);
+    });
+    for (const [subKey, target] of Object.entries(match.substitutes ?? {})) {
+      const targetIndex = teamOf.get(norm(renames[norm(target)] || target));
+      if (targetIndex === undefined) continue;
+      teamOf.set(norm(renames[norm(subKey)] || subKey), targetIndex);
     }
 
     for (const file of match.files) {
@@ -173,6 +195,23 @@ export function computePlayerSynergy(
         }
       }
     }
+
+    // Tournaments the two played on the same team: teamOf is keyed by
+    // export-time (resolved) name, so both sides resolve through `renames`
+    // the same way the song walk does — once per tournament. The row's
+    // synergy rates only cover songs whose exports survived, while this
+    // answers "how often were they teammates". Counted for every partner on
+    // the roster, including ones with no list-bearing song, so the column
+    // stays truthful on rows the chance filter would otherwise hide the
+    // evidence for.
+    const selfTeam = teamOf.get(norm(renames[selfKey] ?? selfKey));
+    if (selfTeam !== undefined) {
+      for (const [key, display] of roster) {
+        if (key === selfKey) continue;
+        if (teamOf.get(norm(renames[key] ?? key)) !== selfTeam) continue;
+        partnerFor(key, display).teammateMatches++;
+      }
+    }
   }
 
   const list: PartnerSynergy[] = [...partners.values()]
@@ -180,6 +219,7 @@ export function computePlayerSynergy(
       uname: a.uname,
       read: synergyRead(a.read.chances, a.read.hits),
       readBy: synergyRead(a.readBy.chances, a.readBy.hits),
+      teammateMatches: a.teammateMatches,
     }))
     // A partner both players shared a roster with but never met on a
     // list-bearing song has nothing to rank on either side; keeping them would

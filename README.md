@@ -513,8 +513,8 @@ Each pairing carries both directions on one row — **You snipe them** (songs th
 player got right that were on their list) and **They snipe you** (the same
 relationship counted from the other end) — rather than two independently sorted
 lists, so a lopsided pairing is visible at a glance instead of having to be
-spotted by comparing positions across tables. Columns are sortable by either
-direction or by name, and rates are coloured by `readHeat`
+spotted by comparing positions across tables. Columns are sortable by name,
+either direction, or times teamed, and rates are coloured by `readHeat`
 (`components/SynergyReadValue.tsx`) — 50%+ green, 25–50% gold, under 25% red, so
 the column can be ranked without reading the numbers off it.
 
@@ -548,8 +548,11 @@ Three things are deliberately *not* here:
 
 - **No self row.** A player's own correct guesses on their own list are exactly
   their Rig GR, which the tournament history above already shows per tournament.
-- **No tournaments-shared count.** The chance count printed beside each rate is
-  already the evidence a pairing rests on; a second count would say less.
+- **Times teamed.** Tournaments in view where the two played on the same team
+  (teammates for the tournament, so a sat-out game doesn't cost the pairing),
+  resolved through the same renames/aliases as the rates, substitutes under
+  the team they filled. The chance counts beside each rate say how much
+  evidence a pairing rests on; this says how often they were teammates.
 - **No ally/enemy split.** That is meaningful within one room, where two players
   are unambiguously teammates or opponents. Across tournaments the same two are
   teammates one week and opponents the next, so both directions are pooled

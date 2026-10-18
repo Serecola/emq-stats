@@ -255,8 +255,8 @@ export async function createMatch(input: MatchInput): Promise<Match> {
     renames: input.renames ?? {},
     substitutes: input.substitutes ?? {},
     playerRanks: input.playerRanks ?? {},
-    // Undefined (a 3-team 3v3v3, an old client) stores NULL, which reads back
-    // as "no explicit format" and falls back to the team-count inference.
+    // Undefined (an old client) stores NULL, which reads back as "no
+    // explicit format" and falls back to the team-count inference.
     cycles: input.cycles,
     excludeFromStats: input.excludeFromStats === true,
   };

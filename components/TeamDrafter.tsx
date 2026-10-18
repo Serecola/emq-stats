@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import { parsePlayerList, parseRankList, roundToTenth } from '@/lib/teams';
 import { balanceTeams, mergeHiddenRanks, type DraftPlayer, type TeamDraft } from '@/lib/balance';
 import {
-  TWO_TEAM_ROUNDS_MAX,
-  TWO_TEAM_ROUNDS_MIN,
+  ROUNDS_MAX,
+  ROUNDS_MIN,
   isValidCycles,
   resolveCycles,
   validTeamCountsPhrase,
@@ -64,10 +64,13 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
 ];
 
 /**
- * The format pills for a draft of 3+ teams: how many times every pair meets.
- * With only 2 teams the same value is "Rounds N" (how many times the lone
- * pair plays, 2–10) and the pills are replaced by a number input. Twice is
- * the default — see defaultCycles in lib/format.ts.
+ * The format pills for a round robin: how many times every pair meets.
+ * With 2 teams there is one pair, and with 3 teams every round holds all
+ * three, so the same value is "Rounds N" (how many games the tournament
+ * runs, 2–10) for both and the pills are replaced by a number input. For
+ * team counts ≥ 3 the same Rounds-N number input is offered alongside the
+ * round-robin pills, but Twice is always the default — see defaultCycles in
+ * lib/format.ts.
  */
 const FORMAT_OPTIONS: { cycles: 1 | 2; label: string }[] = [
   { cycles: 1, label: 'Round Robin Once' },
@@ -117,7 +120,8 @@ export default function TeamDrafter({
   // lib/format.ts). Owned by the form (it is saved with the match, and the
   // bracket preview below the Teams box reads it too), so it arrives here as
   // a controlled value: 1 = Round Robin Once, 2 = Round Robin Twice (the
-  // default), 2–10 = "Rounds N" once a draft leaves only 2 teams. Undefined
+  // default), 2–10 = "Rounds N" once a draft leaves 2 teams (the lone pair's
+  // games) or 3 teams (that many 3v3v3 rounds, default 5). Undefined
   // is "no explicit format yet" — the display resolves it through
   // resolveCycles, same as the schedule does.
   cycles: number | undefined;
@@ -234,9 +238,10 @@ export default function TeamDrafter({
   }, [counts, rankSource]);
 
   // The team size is a free input rather than a menu of presets: a legal
-  // size divides the ranked player count exactly AND leaves an even number
-  // of teams (see lib/format.ts), so every generated draft fits the bracket
-  // and the format picker below. Checked live so the admin sees why a size
+  // size divides the ranked player count exactly AND leaves a playable team
+  // count — any even number, plus exactly 3 for the 3v3v3 format (see
+  // lib/format.ts) — so every generated draft fits the bracket and the
+  // format picker below. Checked live so the admin sees why a size
   // can't work the moment they type it, not only when they generate.
   const sizeCheck = useMemo(() => {
     const n = ranked.length;
@@ -262,12 +267,12 @@ export default function TeamDrafter({
         reason: 'A tournament needs at least 2 teams — try a smaller size.',
       };
     }
-    if (teams % 2 !== 0) {
+    if (teams !== 3 && teams % 2 !== 0) {
       return {
         ok: false as const,
         size,
         teams,
-        reason: `${teams} teams is odd — the team count must be even.`,
+        reason: `${teams} teams is odd — the team count must be even (or exactly 3 for 3v3v3).`,
       };
     }
     return { ok: true as const, size, teams };
@@ -497,17 +502,18 @@ export default function TeamDrafter({
           </span>
         )}
         {/* Format — how many times each pair of teams meets, saved with the
-            match as its `cycles`. With only 2 teams there is one pair, so the
-            same value reads as "Rounds N": how many times the two play. */}
+            match as its `cycles`. With 2 teams there is one pair and with 3
+            teams every round holds all three, so the same value reads as
+            "Rounds N" (how many games the tournament runs, 2–10) for both. */}
         <label className="flex items-center gap-1.5 text-xs text-textMuted">
           Format
-          {draftTeamCount === 2 ? (
+          {draftTeamCount !== null && (draftTeamCount === 2 || draftTeamCount >= 3) ? (
             <span className="flex items-center gap-1.5">
               Rounds
               <input
                 type="number"
-                min={TWO_TEAM_ROUNDS_MIN}
-                max={TWO_TEAM_ROUNDS_MAX}
+                min={ROUNDS_MIN}
+                max={ROUNDS_MAX}
                 value={formatCycles}
                 onChange={(e) => {
                   const value = Number(e.target.value);

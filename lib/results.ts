@@ -20,7 +20,7 @@ export interface GameResult {
  * team count (see lib/format.ts) 窶・never re-inferred from the games:
  *
  *   roundRobin 窶・4 or 6 teams, ranked on wins with a head-to-head TB
- *   threeWay   窶・3 teams, five 3v3v3 rounds, ranked on summed placement
+ *   threeWay   窶・3 teams, N 3v3v3 rounds, ranked on summed placement
  *                points (3 / 2 / 1) with the number of rounds won as TB
  */
 export type StandingsFormat = 'roundRobin' | 'threeWay';
@@ -59,7 +59,7 @@ export interface TeamResult {
   setTies: number;
   // Round robin: sum of this team's own entered scores across every game.
   // 3v3v3: total points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd, summed
-  // over the five rounds (and displayed as the Pts column).
+  // over the N rounds (and displayed as the Pts column).
   pts: number;
   // 3v3v3: the raw sum of each team's own entered scores across every round.
   // Not a sort key on its own — always shadowed by Points — but the tiebreak
@@ -110,7 +110,7 @@ export function computeGameResult(file: MatchFile, teams: Team[]): GameResult | 
  *
  *   5. Pts — the sum of each team's own entered scores across every game
  *
- * 3v3v3 (3 teams, five rounds) —
+ * 3v3v3 (3 teams, N rounds) —
  *
  *   1. Points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd in each round, summed
  *   2. Total Score — raw sum of each team's own entered scores across every round

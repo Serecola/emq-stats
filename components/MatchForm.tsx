@@ -19,8 +19,8 @@ import {
   fileContentSignature,
 } from '@/lib/schedule';
 import {
-  TWO_TEAM_ROUNDS_MAX,
-  TWO_TEAM_ROUNDS_MIN,
+  ROUNDS_MAX,
+  ROUNDS_MIN,
   isValidCycles,
   isValidTeamCount,
   resolveCycles,
@@ -152,7 +152,8 @@ export default function MatchForm({
   const [teamSource, setTeamSource] = useState<'paste' | 'draft'>('paste');
   // The tournament's format — how many times each pair of teams meets (see
   // lib/format.ts): 1 = Round Robin Once, 2 = Round Robin Twice (the default),
-  // 2–10 = "Rounds N" once the roster leaves only 2 teams. Owned here (it is
+  // 2–10 = "Rounds N" once the roster leaves 2 teams (the lone pair's games)
+  // or 3 teams (that many 3v3v3 rounds). Owned here (it is
   // saved with the match and the bracket preview below reads it); the
   // autodrafter edits it as a controlled value. New tournaments start at Twice
   // (the required default); edits seed from the saved match — undefined means
@@ -779,11 +780,10 @@ export default function MatchForm({
     }
     // The format is whatever makes a legal schedule for this roster: an
     // explicit pick wins, otherwise the historical inference for the count
-    // (which is also what the bracket preview above runs). A 3-team 3v3v3
-    // carries no format — resolveCycles would answer 2 for it, which
-    // isValidCycles rightly refuses, so the check is skipped for it.
+    // (which is also what the bracket preview above runs). 3-team 3v3v3
+    // carries its Rounds count like the 2-team series does.
     const effectiveCycles = resolveCycles(parsedTeams.length, cycles);
-    if (parsedTeams.length !== 3 && !isValidCycles(parsedTeams.length, effectiveCycles)) {
+    if (!isValidCycles(parsedTeams.length, effectiveCycles)) {
       setFormError(
         `That format doesn't fit ${parsedTeams.length} teams — pick a legal one first.`
       );
@@ -894,10 +894,9 @@ export default function MatchForm({
       renames,
       substitutes,
       playerRanks: parsedPlayerRanks,
-      // A 3-team 3v3v3 runs no round robin, so it stores no format — stale
-      // picks from an earlier roster must not linger on it either. Otherwise
-      // the effective format (explicit pick, else the historical inference).
-      cycles: parsedTeams.length === 3 ? undefined : effectiveCycles,
+      // The effective format (explicit pick, else the historical inference) —
+      // a 3-team 3v3v3 stores its Rounds count like the 2-team series does.
+      cycles: effectiveCycles,
     };
     // withBasePath: the request carries the whole tournament (raw exports and
     // all), and a hand-built URL gets no prefix from the router — without it
@@ -1132,21 +1131,22 @@ export default function MatchForm({
           roster. The autodrafter carries its own copy of this control (it
           formats the team count its size would produce); both write the same
           `cycles` the bracket preview and the save payload read. Shown for a
-          pasted roster only when there is a legal count to format for, and
-          for a 2-team roster as "Rounds N" (2–10). Hidden on 3-team 3v3v3
-          (no round robin) and while a draft's own picker is visible. */}
-      {((teamSource === 'paste' && parsedTeams.length !== 3 && isValidTeamCount(parsedTeams.length)) ||
+          pasted roster only when there is a legal count to format for: a
+          2-team roster or any team count of 3 or more as "Rounds N" (2–10),
+          anything else as the round-robin pills. Hidden while a draft's own
+          picker is visible. */}
+      {((teamSource === 'paste' && isValidTeamCount(parsedTeams.length)) ||
         !canRedraft) &&
         parsedTeams.length >= 2 && (
           <div className="flex items-center gap-1.5 text-xs text-textMuted">
             <span>Format</span>
-            {parsedTeams.length === 2 ? (
+            {parsedTeams.length === 2 || parsedTeams.length >= 3 ? (
               <span className="flex items-center gap-1.5">
                 Rounds
                 <input
                   type="number"
-                  min={TWO_TEAM_ROUNDS_MIN}
-                  max={TWO_TEAM_ROUNDS_MAX}
+                  min={ROUNDS_MIN}
+                  max={ROUNDS_MAX}
                   value={resolveCycles(parsedTeams.length, cycles)}
                   onChange={(e) => {
                     const value = Number(e.target.value);
