@@ -55,13 +55,27 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  // The format must make a legal schedule for this roster: an explicit pick
-  // wins, otherwise the historical inference for the count (the same rule the
-  // form submits with — see components/MatchForm.tsx). 3-team 3v3v3 carries
-  // its Rounds count like the 2-team series does.
+  // The format mode must be one the app knows (absent = the historical
+  // team-count inference), and the format must make a legal schedule for
+  // this roster: an explicit pick wins, otherwise the inference for the
+  // count (the same rule the form submits with — see components/MatchForm.tsx).
+  if (
+    body.formatType !== undefined &&
+    body.formatType !== 'pairwise' &&
+    body.formatType !== 'allteams'
+  ) {
+    return NextResponse.json(
+      { error: 'Format must be either "Round Robin" (pairwise) or "Rounds N" (allteams).' },
+      { status: 400 }
+    );
+  }
   if (
     body.cycles !== undefined &&
-    !isValidCycles(body.teams.length, resolveCycles(body.teams.length, body.cycles))
+    !isValidCycles(
+      body.teams.length,
+      resolveCycles(body.teams.length, body.cycles, body.formatType),
+      body.formatType
+    )
   ) {
     return NextResponse.json(
       { error: `That format doesn't fit ${body.teams.length} teams.` },

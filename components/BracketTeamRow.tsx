@@ -30,9 +30,10 @@ const TEAM_HIGHLIGHT_ALPHA = 0.12;
  * them, the winner's row tinted, and a hover highlight so every cell that
  * team plays in (in every round) lights up together.
  *
- * The tag is `win` / `tie` for a round-robin pairing; a 3v3v3 card also
- * carries `2nd` / `3rd`, since every team in a three-way round has a place
- * worth showing (and it is the place its points come from).
+ * The tag is `win` / `tie` for a round-robin pairing; an all-teams card
+ * also carries `2nd` / `3rd`, since every team on the podium of such a
+ * round has a place worth showing (and it is the place its points come
+ * from). A finish below the podium stays untagged.
  *
  * Shared by the two brackets that show the same fixtures: the read-only one on
  * the match page (`RoundRobinGrid`) and the score-entry one in the admin form

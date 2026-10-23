@@ -1,5 +1,5 @@
 ﻿import { fileParticipants, fileRosterMembers, norm } from './stats';
-import { isThreeWayFormat, placementPoints } from './format';
+import { isAllTeamsFormat, placementPoints } from './format';
 import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match, MatchFile, Team } from './types';
 
@@ -17,11 +17,13 @@ export interface GameResult {
 
 /**
  * Which standings rules a tournament is ranked by. Decided once, from the
- * team count (see lib/format.ts) 窶・never re-inferred from the games:
+ * team count and stored format (see lib/format.ts) — never re-inferred from
+ * the games:
  *
- *   roundRobin 窶・4 or 6 teams, ranked on wins with a head-to-head TB
- *   threeWay   窶・3 teams, N 3v3v3 rounds, ranked on summed placement
- *                points (3 / 2 / 1) with the number of rounds won as TB
+ *   roundRobin — a pairwise Round Robin, ranked on wins with a head-to-head TB
+ *   threeWay   — an all-teams "Rounds N" tournament (3v3v3, 5v5v5v5v5, 4v4v4v4, ...),
+ *                ranked on summed placement points (3 / 2 / 1, nothing past
+ *                the podium) with the number of rounds won as TB
  */
 export type StandingsFormat = 'roundRobin' | 'threeWay';
 
@@ -32,36 +34,37 @@ export interface TeamResult {
   members: Team;
   /**
    * Finishes by place across every game, competition-ranked (teams level on
-   * score share a place). `firsts` is the 3v3v3 tiebreak and the number its
-   * podium shows; the round-robin table doesn't read any of the three 窶・
-   * there a win is already a 1st and the columns are W-L-T.
+   * score share a place). `firsts` is the all-teams tiebreak and the number
+   * its podium shows; the round-robin table doesn't read any of the three —
+   * there a win is already a 1st and the columns are W-L-T. A finish below
+   * an all-teams podium (4th of a 4v4v4v4) counts in none of the three.
    */
   firsts: number;
   seconds: number;
   thirds: number;
   /**
-   * Round robin: games won / lost / tied. 3v3v3: rounds finished 1st / 3rd /
-   * 2nd 窶・the place counts, carried in the same fields so anything showing
-   * a record shows "how the rounds went" for either format.
+   * Round robin: games won / lost / tied. All-teams: rounds finished 1st /
+   * 3rd / 2nd — the place counts, carried in the same fields so anything
+   * showing a record shows "how the rounds went" for either format.
    */
   matchWins: number;
   matchLosses: number;
   matchTies: number;
-  // Round robin: win = 1, tie = 0.5, loss = 0 窶・the primary sort key.
-  // 3v3v3: the team's total placement points (equal to `pts`), same role.
+  // Round robin: win = 1, tie = 0.5, loss = 0 — the primary sort key.
+  // All-teams: the team's total placement points (equal to `pts`), same role.
   matchPoints: number;
   // Round robin: count of game wins against opponents tied on matchPoints.
-  // 3v3v3: how many rounds the team won (finished 1st) 窶・the tiebreak on
-  // equal points.
+  // All-teams: how many rounds the team won (finished 1st) — the tiebreak
+  // on equal points.
   tb: number;
   setWins: number;
   setLosses: number;
   setTies: number;
   // Round robin: sum of this team's own entered scores across every game.
-  // 3v3v3: total points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd, summed
+  // All-teams: total points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd, summed
   // over the N rounds (and displayed as the Pts column).
   pts: number;
-  // 3v3v3: the raw sum of each team's own entered scores across every round.
+  // All-teams: the raw sum of each team's own entered scores across every round.
   // Not a sort key on its own — always shadowed by Points — but the tiebreak
   // after points, so the team that also has more raw score finishes higher.
   totalScore: number;
@@ -110,7 +113,7 @@ export function computeGameResult(file: MatchFile, teams: Team[]): GameResult | 
  *
  *   5. Pts — the sum of each team's own entered scores across every game
  *
- * 3v3v3 (3 teams, N rounds) —
+ * All-teams "Rounds N" (3v3v3, 5v5v5v5v5, 4v4v4v4, ...) —
  *
  *   1. Points — 3 for a 1st, 2 for a 2nd, 1 for a 3rd in each round, summed
  *   2. Total Score — raw sum of each team's own entered scores across every round
@@ -122,9 +125,13 @@ export function computeGameResult(file: MatchFile, teams: Team[]): GameResult | 
  * for 1st pays 3 to both (and the skipped place leaves the third team on its
  * 3rd-place 1).
  */
-export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): MatchResults {
+export function computeMatchResults(
+  match: Pick<Match, 'teams' | 'files'> & Pick<Partial<Match>, 'formatType'>
+): MatchResults {
   const teams = match.teams;
-  const format: StandingsFormat = isThreeWayFormat(teams.length) ? 'threeWay' : 'roundRobin';
+  const format: StandingsFormat = isAllTeamsFormat(teams.length, match.formatType)
+    ? 'threeWay'
+    : 'roundRobin';
   const games = match.files
     .map((f) => computeGameResult(f, teams))
     .filter((g): g is GameResult => g !== null);
@@ -136,7 +143,7 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
   const firsts: Record<number, number> = {};
   const seconds: Record<number, number> = {};
   const thirds: Record<number, number> = {};
-  const points: Record<number, number> = {}; // 3v3v3 placement points
+  const points: Record<number, number> = {}; // all-teams placement points
   teams.forEach((_, i) => {
     wins[i] = 0;
     losses[i] = 0;
@@ -175,20 +182,20 @@ export function computeMatchResults(match: Pick<Match, 'teams' | 'files'>): Matc
 
   const matchPoints: Record<number, number> = {};
   teams.forEach((_, i) => {
-    // The round robins rank on wins; the 3v3v3 format ranks on the points
-    // its rounds pay out 窶・the same total the table's Pts column shows.
+    // The round robins rank on wins; the all-teams format ranks on the points
+    // its rounds pay out — the same total the table's Pts column shows.
     matchPoints[i] = format === 'threeWay' ? points[i] : wins[i] * 1 + ties[i] * 0.5;
   });
 
   const tb: Record<number, number> = {};
   teams.forEach((_, i) => (tb[i] = 0));
   if (format === 'threeWay') {
-    // TB: rounds the team won 窶・the count that separates teams level on
+    // TB: rounds the team won — the count that separates teams level on
     // points. A round two teams share at the top counts for each of them:
     // both finished 1st and both took the 3 for it.
     teams.forEach((_, i) => (tb[i] = firsts[i]));
   } else {
-    // TB: game wins against opponents whose overall matchPoints match ours 窶・
+    // TB: game wins against opponents whose overall matchPoints match ours —
     // counted per game (so beating the same tied opponent twice counts
     // twice), not deduplicated per opponent.
     for (const game of games) {

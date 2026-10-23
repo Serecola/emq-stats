@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getMatch, listPlayerAliases, listPlayerTags } from '@/lib/store';
 import { withAliases } from '@/lib/player-aliases';
 import { computeMatchStats } from '@/lib/stats';
-import type { MatchStats } from '@/lib/types';
+import type { FormatType, MatchStats } from '@/lib/types';
 import { computeGuessRateStats, type GuessRateStats } from '@/lib/guess-stats';
 import {
   filesInStatsScope,
@@ -102,13 +102,14 @@ export default async function MatchPage({
     match.files,
     renames,
     match.substitutes,
-    match.cycles
+    match.cycles,
+    match.formatType
   );
   const bracketFiles = summarizeBracketFiles(assignment);
   // The same fixture resolution, as a per-file game label for the Most Played
   // VNs song breakdown — `patt vs Tommy G2`. Keyed by file id, so it serves
   // the scoped file list below exactly as it serves the full one.
-  const gameLabels = gameLabelsByFileId(match.teams, assignment, match.cycles);
+  const gameLabels = gameLabelsByFileId(match.teams, assignment, match.cycles, match.formatType);
 
   // Stats scope from the round/game selector (see MatchStatsScope + the game
   // chips inside RoundRobinGrid): rounds as `?rounds=3,4,6`, games as a comma
@@ -125,10 +126,11 @@ export default async function MatchPage({
     renames,
     scope,
     match.substitutes,
-    match.cycles
+    match.cycles,
+    match.formatType
   );
   const scopedMatch = { ...match, files: scopedFiles };
-  const scopedLabel = scopeLabel(scope, match.teams, match.cycles);
+  const scopedLabel = scopeLabel(scope, match.teams, match.cycles, match.formatType);
 
   // Computed synchronously (not inside a nested async component) so a
   // thrown error is actually catchable here — Server Component children
@@ -297,6 +299,7 @@ export default async function MatchPage({
           scope={scope}
           matchPath={`/matches/${match.id}`}
           cycles={match.cycles}
+          formatType={match.formatType}
         />
       </section>
 
@@ -429,7 +432,8 @@ function parseStatsScope(
 function scopeLabel(
   scope: StatsScope,
   teams: Parameters<typeof generateBracket>[0],
-  cycles?: number
+  cycles?: number,
+  formatType?: FormatType
 ): string {
   if (isFullScope(scope)) return '';
   if (scope.rounds.length > 0) {
@@ -440,7 +444,7 @@ function scopeLabel(
   // validated in parseStatsScope; the fallback only exists so a label
   // survives any future path that skips that check.
   const names = new Map<string, string>();
-  for (const round of generateBracket(teams, cycles)) {
+  for (const round of generateBracket(teams, cycles, formatType)) {
     round.matchups.forEach((m, i) => {
       names.set(m.slot, `Round ${round.displayRound} Game ${i + 1}`);
     });

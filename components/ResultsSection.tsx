@@ -20,9 +20,10 @@ export default function ResultsSection({
   // roster (parsed into playerRanks, see lib/teams.ts) — looked up by
   // normalized username, the same identity the MVP and Guess Rate tables use.
   const rankOf = (name: string): number | null => playerRanks[norm(name)] ?? null;
-  // Which standings the table shows — see lib/results.ts. A 3v3v3 tournament
-  // ranks on summed placement points with rounds won as the tiebreak, so it
-  // shows Pts + TB instead of the round robin's W-L-T / Sets columns.
+  // Which standings the table shows — see lib/results.ts. An all-teams
+  // "Rounds N" tournament (3v3v3, 5v5v5v5v5, 4v4v4v4, ...) ranks on summed placement
+  // points with rounds won as the tiebreak, so it shows Pts + TB instead of
+  // the round robin's W-L-T / Sets columns.
   const threeWay = results.format === 'threeWay';
 
   if (!results.hasScores) {

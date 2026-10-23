@@ -1,47 +1,63 @@
 import { computeGameResult } from './results';
 import { extractUsernames, fileRosterMembers, norm } from './stats';
-import { isThreeWayFormat, isValidTeamCount, resolveCycles } from './format';
+import { isAllTeamsFormat, isValidTeamCount, resolveCycles } from './format';
+import type { FormatType } from './format';
 import type { Match, MatchFile, Team } from './types';
 
-// The schedule shape is the tournament's stored `cycles` — how many times
-// each pair of teams meets (see lib/format.ts): 1 is a single round robin,
-// 2 a double one; a 2-team tournament reads 2–10 as "Rounds N", the number
-// of games the lone pair plays, and a 3-team tournament reads 2–10 the same
-// way — that many 3v3v3 rounds with every team in each. Matches saved before
-// the format was editable carry no `cycles` and fall back to defaultCycles
-// (Round Robin Twice, cycles 2, for every size) — so nothing needed migrating.
+// The schedule shape is the tournament's stored format (see lib/format.ts):
+// `cycles` is the rounds count, and `formatType` the mode it runs in —
+// pairwise Round Robin (1 a single round robin, 2 a double one, the default
+// for even counts of 4+) or "Rounds N" all-teams (every team in one match
+// per round, 2–10 rounds — the only shape for 2-team and odd team counts
+// such as 3, 5, 7).
+// Matches saved before the format was editable carry neither and fall back
+// to the team-count inference (2 or 3 teams = all-teams, otherwise a double
+// round robin) — so nothing needed migrating.
 
-// How many 3v3v3 rounds a 3-team tournament runs: the stored pick
-// (resolved through resolveCycles, defaulting to cycles 2 via defaultCycles).
-// Threaded through everywhere a "how many rounds" question is asked so a
-// Rounds-N pick actually changes the bracket, the progress counts and the
-// file matching — not just the input it was typed into.
-function threeWayRounds(cycles?: number | null): number {
-  return resolveCycles(3, cycles);
+// How many rounds an all-teams tournament runs: the stored pick (resolved
+// through resolveCycles under the all-teams rules, defaulting to cycles 2
+// via defaultCycles). Threaded through everywhere a "how many rounds"
+// question is asked so a Rounds-N pick actually changes the bracket, the
+// progress counts and the file matching — not just the input it was typed
+// into.
+function allTeamsRounds(teamCount: number, cycles?: number | null): number {
+  return resolveCycles(teamCount, cycles, 'allteams');
 }
 
-export function roundRobinCycles(teamCount: number, cycles?: number | null): number {
-  if (isThreeWayFormat(teamCount)) {
-    // 3-team tournaments aren't round robins — every caller branches on
-    // isThreeWayFormat before asking. Anything else shouldn't happen if the
+export function roundRobinCycles(
+  teamCount: number,
+  cycles?: number | null,
+  formatType?: FormatType | null
+): number {
+  if (isAllTeamsFormat(teamCount, formatType)) {
+    // All-teams tournaments aren't round robins — every caller branches on
+    // isAllTeamsFormat before asking. Anything else shouldn't happen if the
     // count constraint is enforced at save time; fall back to the
     // team-count default rather than throwing mid-render.
     return 1;
   }
-  return resolveCycles(teamCount, cycles);
+  return resolveCycles(teamCount, cycles, formatType);
 }
 
-export function gamesPerTeam(teamCount: number, cycles?: number | null): number {
-  // Every team plays every 3v3v3 round: N games, no pairings.
-  if (isThreeWayFormat(teamCount)) return threeWayRounds(cycles);
-  return (teamCount - 1) * roundRobinCycles(teamCount, cycles);
+export function gamesPerTeam(
+  teamCount: number,
+  cycles?: number | null,
+  formatType?: FormatType | null
+): number {
+  // Every team plays every all-teams round: N games, no pairings.
+  if (isAllTeamsFormat(teamCount, formatType)) return allTeamsRounds(teamCount, cycles);
+  return (teamCount - 1) * roundRobinCycles(teamCount, cycles, formatType);
 }
 
-export function totalGamesExpected(teamCount: number, cycles?: number | null): number {
-  // A 3v3v3 round is ONE game with all three teams in it, so N rounds
-  // are N games — not the 3 * N / 2 a pair count would imply.
-  if (isThreeWayFormat(teamCount)) return threeWayRounds(cycles);
-  return (teamCount * gamesPerTeam(teamCount, cycles)) / 2;
+export function totalGamesExpected(
+  teamCount: number,
+  cycles?: number | null,
+  formatType?: FormatType | null
+): number {
+  // An all-teams round is ONE game with every team in it, so N rounds
+  // are N games — not the N * teams / 2 a pair count would imply.
+  if (isAllTeamsFormat(teamCount, formatType)) return allTeamsRounds(teamCount, cycles);
+  return (teamCount * gamesPerTeam(teamCount, cycles, formatType)) / 2;
 }
 
 export interface FixturePairProgress {
@@ -68,26 +84,27 @@ export interface ScheduleProgress {
  * Cross-references the expected fixture list against however many games are
  * actually recorded for each pair, so the admin can see what's left to
  * upload. Doesn't care which specific two games satisfy a 2x pairing — just
- * the count. A 3-team tournament has no pairs at all (its N 3v3v3 rounds
- * are each one game with every team in it), so its progress is simply how
- * many of the N are recorded.
+ * the count. An all-teams tournament has no pairs at all (its N rounds are
+ * each one game with every team in it), so its progress is simply how many
+ * of the N are recorded.
  */
 export function computeScheduleProgress(
-  match: Pick<Match, 'teams' | 'files'> & Pick<Partial<Match>, 'cycles'>
+  match: Pick<Match, 'teams' | 'files'> & Pick<Partial<Match>, 'cycles' | 'formatType'>
 ): ScheduleProgress {
   const teams = match.teams;
   const n = teams.length;
+  const formatType = match.formatType;
 
-  if (isThreeWayFormat(n)) {
-    const rounds = threeWayRounds(match.cycles);
-    const totalExpected = totalGamesExpected(n, match.cycles);
+  if (isAllTeamsFormat(n, formatType)) {
+    const rounds = allTeamsRounds(n, match.cycles);
+    const totalExpected = totalGamesExpected(n, match.cycles, formatType);
     const totalRecorded = Math.min(
       match.files.filter((f) => computeGameResult(f, teams) !== null).length,
       totalExpected
     );
     return {
       cycles: rounds,
-      gamesPerTeam: gamesPerTeam(n, match.cycles),
+      gamesPerTeam: gamesPerTeam(n, match.cycles, formatType),
       totalExpected,
       totalRecorded,
       pairs: [],
@@ -96,7 +113,7 @@ export function computeScheduleProgress(
     };
   }
 
-  const cycles = roundRobinCycles(n, match.cycles);
+  const cycles = roundRobinCycles(n, match.cycles, formatType);
 
   // Count recorded games per pair by scanning every scored file.
   const playedCount = new Map<string, number>();
@@ -125,11 +142,11 @@ export function computeScheduleProgress(
   }
 
   const totalRecorded = pairs.reduce((s, p) => s + Math.min(p.played, p.needed), 0);
-  const totalExpected = totalGamesExpected(n, match.cycles);
+  const totalExpected = totalGamesExpected(n, match.cycles, formatType);
 
   return {
     cycles,
-    gamesPerTeam: gamesPerTeam(n, match.cycles),
+    gamesPerTeam: gamesPerTeam(n, match.cycles, formatType),
     totalExpected,
     totalRecorded,
     pairs,
@@ -150,19 +167,19 @@ export interface BracketMatchup {
   //              display order: it is persisted on saved files.
   displayRound: number; // 1-based sequential round shown on screen — Round
   //              1..6 for a double round robin, Round 1..5 for a single one,
-  //              Round 1..5 for a 3v3v3 tournament.
+  //              Round 1..N for an all-teams tournament.
   //              Unlike `round` it never repeats, so it is what round
   //              headings, file labels and the stats scope use.
   round: number; // 1-based round within a single round-robin pass. The
   //                reverse leg repeats the same numbers, so displayRound
   //                2 is round 1's rematch, 4 is round 2's, 6 is round 3's.
-  //                A 3v3v3 tournament has a single leg, so round is simply
-  //                the display round.
+  //                An all-teams tournament has a single leg, so round is
+  //                simply the display round.
   cycle: number; // 1-based round-robin cycle this round belongs to — always
-  //                1 for a 3v3v3 tournament (there are no cycles).
+  //                1 for an all-teams tournament (there are no cycles).
   /**
    * Every team playing this fixture, in display order: two indices for a
-   * round-robin pairing, all three for a 3v3v3 round. Together with `labels`
+   * round-robin pairing, every team for an all-teams round. Together with `labels`
    * this is a fixture's whole team list — nothing should assume a fixture
    * has exactly two teams.
    */
@@ -205,13 +222,15 @@ function singleRoundRobinPairs(n: number): [number, number][][] {
 /**
  * Builds the full fixture bracket for a tournament: every round with its
  * matchups, autogenerated from the team list. The shape follows the
- * tournament's stored `cycles` — how many times each pair meets (see
- * lib/format.ts): 1 is a single round robin, 2 a double one (and is what
- * matches saved before the format was editable default to), and for a
- * 2-team tournament 2–10 reads as "Rounds N": the lone pair plays every
- * round, N rounds in all. 3 teams never reaches the round-robin path —
- * it is no round robin at all: N rounds of 3v3v3, each round one game
- * with every team in it (the 9-player format, three teams of three).
+ * tournament's stored format (see lib/format.ts): a pairwise Round Robin
+ * reads `cycles` as how many times each pair meets — 1 a single round
+ * robin, 2 a double one (what 4+ team matches saved before the format was
+ * editable default to) — while an all-teams "Rounds N" tournament never
+ * reaches the round-robin path at all: N rounds, each one game with every
+ * team in it (1v1, 3v3v3, 5v5v5v5v5, 4v4v4v4, ...), N from 2 to 10 — the
+ * only shape for 2-team and odd team counts (3, 5, 7, ...). With no stored
+ * formatType the historical inference applies (2 teams and odd counts =
+ * all-teams, otherwise pairwise).
  *
  * For a round robin, a second cycle repeats each pairing in the same
  * order — a rematch lists the two teams exactly as the leg it mirrors did,
@@ -223,19 +242,23 @@ function singleRoundRobinPairs(n: number): [number, number][][] {
  * Every matchup carries a stable `slot` key so an uploaded JSON file (and
  * its scores) can be attached to a specific fixture. Round-robin slots keep
  * the cycle-major numbering they have always had (cycle * roundsPerCycle +
- * round); a 3v3v3 round is r<round>m0. Both are persisted on saved files,
- * so they must not be renumbered to follow the display order above.
+ * round); an all-teams round is r<round>m0. Both are persisted on saved
+ * files, so they must not be renumbered to follow the display order above.
  */
-export function generateBracket(teams: Team[], cycles?: number | null): BracketRound[] {
+export function generateBracket(
+  teams: Team[],
+  cycles?: number | null,
+  formatType?: FormatType | null
+): BracketRound[] {
   const n = teams.length;
   if (!isValidTeamCount(n)) return [];
 
-  // 3v3v3: N rounds, one game each, every team in every game. No
+  // All-teams: N rounds, one game each, every team in every game. No
   // pairings, no legs — each round is its own display round, and N is the
   // stored Rounds pick (resolved through resolveCycles, defaulting to cycles 2).
-  if (isThreeWayFormat(n)) {
+  if (isAllTeamsFormat(n, formatType)) {
     const labels = teams.map((team) => team[0]);
-    return Array.from({ length: threeWayRounds(cycles) }, (_, i) => {
+    return Array.from({ length: allTeamsRounds(n, cycles) }, (_, i) => {
       const displayRound = i + 1;
       const matchup: BracketMatchup = {
         slot: bracketSlot(displayRound, 0),
@@ -249,7 +272,7 @@ export function generateBracket(teams: Team[], cycles?: number | null): BracketR
     });
   }
 
-  const resolvedCycles = roundRobinCycles(n, cycles);
+  const resolvedCycles = roundRobinCycles(n, cycles, formatType);
   const base = singleRoundRobinPairs(n);
   const roundsPerCycle = base.length;
   const rounds: BracketRound[] = [];
@@ -393,8 +416,8 @@ function compareByExportTime(a: string, b: string): number {
 /**
  * A fixture's identity for file placement: its teams sorted, so the key is
  * the same whichever side a pairing lists first — "0,3" for a round-robin
- * pairing (the pair key this has always used), "0,1,2" for a 3v3v3 round,
- * where all N rounds share one key and fill in bracket order.
+ * pairing (the pair key this has always used), "0,1,2" for an all-teams
+ * round, where all N rounds share one key and fill in bracket order.
  */
 function teamSetKey(indices: number[]): string {
   return [...indices].sort((a, b) => a - b).join(',');
@@ -418,14 +441,16 @@ export function matchFilesToBracket(
   files: MatchFile[],
   renames: Record<string, string> = {},
   substitutes: Record<string, string> = {},
-  cycles?: number | null
+  cycles?: number | null,
+  formatType?: FormatType | null
 ): BracketAssignment {
-  const rounds = generateBracket(teams, cycles);
+  const rounds = generateBracket(teams, cycles, formatType);
   // Fixture key -> slots in bracket order. The key is the sorted set of the
   // fixture's teams, covering both shapes: a round-robin pairing behaves
   // exactly as the pair key always has (one key under two legs of a double
-  // round robin), while every 3v3v3 round shares the "0,1,2" key and so
-  // fills in bracket order the same way a pair's two legs do.
+  // round robin), while every all-teams round shares its all-teams key
+  // ("0,1,2", "0,1,2,3", ...) and so fills in bracket order the same way a
+  // pair's two legs do.
   const slotsByTeams = new Map<string, string[]>();
   const allSlots: string[] = [];
   for (const rr of rounds) {
@@ -451,10 +476,10 @@ export function matchFilesToBracket(
   }
 
   // Pass 2: infer by the teams present in each file. A fixture set that
-  // recurs (a double round robin's pairing, a 3v3v3 tournament's identical
-  // rounds) yields the same key in every such file, so the try order decides
-  // which fixture each lands on: sort by the play time the game writes into
-  // the export's own name (EMQ_SongHistory_2026-09-27T01_52_55) — the
+  // recurs (a double round robin's pairing, an all-teams tournament's
+  // identical rounds) yields the same key in every such file, so the try
+  // order decides which fixture each lands on: sort by the play time the
+  // game writes into the export's own name (EMQ_SongHistory_2026-09-27T01_52_55) — the
   // earlier game first, so it fills the first free fixture and the later
   // one the next.
   for (const file of [...remaining].sort((a, b) => compareByExportTime(a.label, b.label))) {
@@ -476,21 +501,23 @@ export function matchFilesToBracket(
  * outright, otherwise the teams whose players appear in its raw JSON — the
  * same resolution matchFilesToBracket places uploads by. Without a slot the
  * detection has to be unambiguous: exactly two teams for a round-robin
- * pairing, all three for a 3v3v3 round (where every team plays every game).
+ * pairing, every team for an all-teams round (where every team plays every
+ * game).
  */
 function fixtureTeamsFor(
   file: MatchFile,
   teams: Team[],
   renames: Record<string, string>,
   teamsBySlot: Map<string, number[]>,
-  substitutes: Record<string, string> = {}
+  substitutes: Record<string, string> = {},
+  formatType?: FormatType | null
 ): number[] | null {
   if (file.slot) {
     const fixtureTeams = teamsBySlot.get(file.slot);
     if (fixtureTeams) return fixtureTeams;
   }
   const idx = fileParticipantIndices(file, teams, renames, substitutes);
-  const expected = isThreeWayFormat(teams.length) ? teams.length : 2;
+  const expected = isAllTeamsFormat(teams.length, formatType) ? teams.length : 2;
   return idx.length === expected ? idx : null;
 }
 
@@ -506,8 +533,8 @@ function fixtureTeamsFor(
  * Every unscored team of the game's own fixture is completed (see
  * fixtureTeamsFor), so only the teams that actually played are credited with
  * a 0 — never every other team in the tournament. For a round-robin pairing
- * that is exactly the "one side blank" rule above; a 3v3v3 round typed into
- * one or two of its three boxes fills the rest the same way. A file that
+ * that is exactly the "one side blank" rule above; an all-teams round typed
+ * into only some of its boxes fills the rest the same way. A file that
  * can't be pinned to one fixture, or that has no scores at all, is left
  * exactly as saved: nothing is invented for a game nobody scored.
  *
@@ -526,10 +553,11 @@ export function withAssumedZeroScores(
   files: MatchFile[],
   renames: Record<string, string> = {},
   substitutes: Record<string, string> = {},
-  cycles?: number | null
+  cycles?: number | null,
+  formatType?: FormatType | null
 ): MatchFile[] {
   const teamsBySlot = new Map<string, number[]>();
-  for (const round of generateBracket(teams, cycles)) {
+  for (const round of generateBracket(teams, cycles, formatType)) {
     for (const matchup of round.matchups) {
       teamsBySlot.set(matchup.slot, matchup.teamIndices);
     }
@@ -538,7 +566,7 @@ export function withAssumedZeroScores(
   return files.map((file) => {
     const scores = file.scores;
     if (!scores || Object.keys(scores).length === 0) return file;
-    const fixtureTeams = fixtureTeamsFor(file, teams, renames, teamsBySlot, substitutes);
+    const fixtureTeams = fixtureTeamsFor(file, teams, renames, teamsBySlot, substitutes, formatType);
     if (!fixtureTeams) return file;
     const blank = fixtureTeams.filter(
       (teamIndex) => scores[norm(teams[teamIndex][0])] === undefined
@@ -546,8 +574,8 @@ export function withAssumedZeroScores(
     // Nothing entered against this fixture — which also covers the "score
     // belongs to none of these teams" case (a file attached to the wrong
     // slot by hand) — or nothing left to fill. Otherwise every blank side is
-    // 0: for a pair, blank.length is 0 or 1 exactly as before; a 3v3v3 round
-    // with one or two boxes typed fills the rest the same way.
+    // 0: for a pair, blank.length is 0 or 1 exactly as before; an all-teams
+    // round with only some of its boxes typed fills the rest the same way.
     if (blank.length === 0 || blank.length === fixtureTeams.length) return file;
     const filled = { ...scores };
     for (const teamIndex of blank) filled[norm(teams[teamIndex][0])] = 0;
@@ -608,12 +636,13 @@ export function filesInStatsScope(
   renames: Record<string, string>,
   scope: StatsScope,
   substitutes: Record<string, string> = {},
-  cycles?: number | null
+  cycles?: number | null,
+  formatType?: FormatType | null
 ): MatchFile[] {
   if (isFullScope(scope)) return files;
-  const assignment = matchFilesToBracket(teams, files, renames, substitutes, cycles);
+  const assignment = matchFilesToBracket(teams, files, renames, substitutes, cycles, formatType);
   const slotToRound = new Map<string, number>();
-  for (const matchups of generateBracket(teams, cycles).map((r) => r.matchups)) {
+  for (const matchups of generateBracket(teams, cycles, formatType).map((r) => r.matchups)) {
     for (const m of matchups) slotToRound.set(m.slot, m.displayRound);
   }
   const roundSet = new Set(scope.rounds);
@@ -651,8 +680,9 @@ export function summarizeBracketFiles(
 /**
  * A short human label per bracket-placed file: which fixture the game was
  * between, plus which number game it was for those teams — `patt vs Tommy G2`,
- * the second recorded meeting of that exact pairing (for a 3v3v3 tournament,
- * which of its N rounds it was, since every round has the same three teams).
+ * the second recorded meeting of that exact pairing (for an all-teams
+ * tournament, which of its N rounds it was, since every round has the same
+ * teams).
  *
  * The number counts a fixture's occurrences in display order, *not* the
  * bracket card's per-round "Game N": a double round robin's rematch leg lists
@@ -666,11 +696,12 @@ export function summarizeBracketFiles(
 export function gameLabelsByFileId(
   teams: Team[],
   assignment: BracketAssignment,
-  cycles?: number | null
+  cycles?: number | null,
+  formatType?: FormatType | null
 ): Record<string, string> {
   const labels: Record<string, string> = {};
   const meetings = new Map<string, number>();
-  for (const round of generateBracket(teams, cycles)) {
+  for (const round of generateBracket(teams, cycles, formatType)) {
     for (const matchup of round.matchups) {
       const file = assignment.bySlot[matchup.slot];
       if (!file) continue;

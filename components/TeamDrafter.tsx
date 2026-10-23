@@ -5,10 +5,11 @@ import { parsePlayerList, parseRankList, roundToTenth } from '@/lib/teams';
 import { balanceTeams, mergeHiddenRanks, type DraftPlayer, type TeamDraft } from '@/lib/balance';
 import {
   ROUNDS_MAX,
-  ROUNDS_MIN,
-  isValidCycles,
+  cyclesMin,
   resolveCycles,
+  resolveFormatType,
   validTeamCountsPhrase,
+  type FormatType,
 } from '@/lib/format';
 
 const norm = (s: string) => s.toLowerCase().trim();
@@ -64,20 +65,6 @@ const RANK_SOURCES: { id: RankSource; label: string; hint: string }[] = [
 ];
 
 /**
- * The format pills for a round robin: how many times every pair meets.
- * With 2 teams there is one pair, and with 3 teams every round holds all
- * three, so the same value is "Rounds N" (how many games the tournament
- * runs, 2–10) for both and the pills are replaced by a number input. For
- * team counts ≥ 3 the same Rounds-N number input is offered alongside the
- * round-robin pills, but Twice is always the default — see defaultCycles in
- * lib/format.ts.
- */
-const FORMAT_OPTIONS: { cycles: 1 | 2; label: string }[] = [
-  { cycles: 1, label: 'Round Robin Once' },
-  { cycles: 2, label: 'Round Robin Twice' },
-];
-
-/**
  * Auto-draft helper for the Teams box. The host pastes the `players.txt`
  * list (names, optionally with their letter tier), picks which rank source
  * to balance with, then picks one of the balanced splits the partitioner
@@ -106,6 +93,8 @@ export default function TeamDrafter({
   savedRanksLabel,
   cycles,
   onCyclesChange,
+  formatType,
+  onFormatTypeChange,
 }: {
   onApply: (teams: string[][], ranks: Record<string, number>) => void;
   savedRanks?: Record<string, number> | null;
@@ -116,16 +105,18 @@ export default function TeamDrafter({
   // Pasted-table source.
   vnExpectedRanks?: Record<string, number> | null;
   savedRanksLabel?: string;
-  // The tournament's format — how many times each pair of teams meets (see
-  // lib/format.ts). Owned by the form (it is saved with the match, and the
-  // bracket preview below the Teams box reads it too), so it arrives here as
-  // a controlled value: 1 = Round Robin Once, 2 = Round Robin Twice (the
-  // default), 2–10 = "Rounds N" once a draft leaves 2 teams (the lone pair's
-  // games) or 3 teams (that many 3v3v3 rounds, default 5). Undefined
-  // is "no explicit format yet" — the display resolves it through
-  // resolveCycles, same as the schedule does.
+  // The tournament's format — the rounds count and the mode (see
+  // lib/format.ts). Owned by the form (both are saved with the match, and
+  // the bracket preview below the Teams box reads them too), so they arrive
+  // here as controlled values: `cycles` the rounds behind the Rounds input
+  // (default 2) and `formatType` which pill is active — the pairwise Round
+  // Robin or the all-teams "Rounds N" (every team in one match each round).
+  // Undefined is "no explicit pick yet" — the display resolves both through
+  // resolveFormatType / resolveCycles, same as the schedule does.
   cycles: number | undefined;
   onCyclesChange: (cycles: number) => void;
+  formatType: FormatType | undefined;
+  onFormatTypeChange: (formatType: FormatType) => void;
 }) {
   const [playersText, setPlayersText] = useState('');
   const [ranksText, setRanksText] = useState('');
@@ -239,10 +230,11 @@ export default function TeamDrafter({
 
   // The team size is a free input rather than a menu of presets: a legal
   // size divides the ranked player count exactly AND leaves a playable team
-  // count — any even number, plus exactly 3 for the 3v3v3 format (see
-  // lib/format.ts) — so every generated draft fits the bracket and the
-  // format picker below. Checked live so the admin sees why a size
-  // can't work the moment they type it, not only when they generate.
+  // count — any number of teams of 2 or more (see lib/format.ts). Even
+  // counts of 4 or more can run Round Robin; odd counts (3, 5, 7, ...) play
+  // "Rounds N", so every generated draft fits the bracket and the format
+  // picker below. Checked live so the admin sees why a size can't work the
+  // moment they type it, not only when they generate.
   const sizeCheck = useMemo(() => {
     const n = ranked.length;
     const text = teamSizeText.trim();
@@ -267,24 +259,18 @@ export default function TeamDrafter({
         reason: 'A tournament needs at least 2 teams — try a smaller size.',
       };
     }
-    if (teams !== 3 && teams % 2 !== 0) {
-      return {
-        ok: false as const,
-        size,
-        teams,
-        reason: `${teams} teams is odd — the team count must be even (or exactly 3 for 3v3v3).`,
-      };
-    }
     return { ok: true as const, size, teams };
   }, [ranked.length, teamSizeText]);
 
   // What the format control applies to: the team count this size would
   // produce (the Teams box catches up on Apply). While the size is invalid
-  // there is no count to format for, so the pills fall back to the raw
-  // value's validity against a 4-team shape — display only; Generate is
-  // blocked until sizeCheck passes anyway.
+  // there is no count to format for, so the control falls back to a 4-team
+  // shape for display — display only; Generate is blocked until sizeCheck
+  // passes anyway.
   const draftTeamCount = sizeCheck.ok ? sizeCheck.teams : null;
-  const formatCycles = resolveCycles(draftTeamCount ?? 4, cycles);
+  const displayTeamCount = draftTeamCount ?? 4;
+  const displayFormatType = resolveFormatType(displayTeamCount, formatType);
+  const formatCycles = resolveCycles(displayTeamCount, cycles, displayFormatType);
 
   function generate() {
     setApplied(null);
@@ -482,17 +468,29 @@ export default function TeamDrafter({
         </span>
         <label className="flex items-center gap-1.5 text-xs text-textMuted">
           Players per team
-          <input
-            type="number"
-            min={1}
+          <select
             value={teamSizeText}
             onChange={(e) => {
               setTeamSizeText(e.target.value);
               setDrafts([]);
               setApplied(null);
             }}
-            className="w-16 rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
-          />
+            className="rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
+          >
+            {ranked.length > 0
+              ? Array.from({ length: ranked.length }, (_, i) => i + 1)
+                  .filter((size) => ranked.length % size === 0)
+                  .filter((size) => {
+                    const teams = ranked.length / size;
+                    return teams >= 2;
+                  })
+                  .map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))
+              : [<option key="3" value="3">3</option>]}
+          </select>
         </label>
         {/* Live verdict on the typed size: the team count it produces when
             legal, the reason it can't when not. */}
@@ -501,43 +499,37 @@ export default function TeamDrafter({
             {sizeCheck.ok ? `${sizeCheck.teams} teams` : sizeCheck.reason}
           </span>
         )}
-        {/* Format — how many times each pair of teams meets, saved with the
-            match as its `cycles`. With 2 teams there is one pair and with 3
-            teams every round holds all three, so the same value reads as
-            "Rounds N" (how many games the tournament runs, 2–10) for both. */}
+        {/* Format — the rounds count and the mode, saved with the match as
+            `cycles` / `formatType`. The same two pills as the form above for
+            even counts of 4 or more: Round Robin (every pair meets) and
+            "Rounds N" (all teams in one match each round, e.g. 4v4v4v4) —
+            while a size leaving 2 teams or an odd count (3, 5, 7, ...) plays
+            "Rounds N" only, shown as a fixed pill. */}
         <label className="flex items-center gap-1.5 text-xs text-textMuted">
           Format
-          {draftTeamCount !== null && (draftTeamCount === 2 || draftTeamCount >= 3) ? (
-            <span className="flex items-center gap-1.5">
-              Rounds
-              <input
-                type="number"
-                min={ROUNDS_MIN}
-                max={ROUNDS_MAX}
-                value={formatCycles}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (Number.isInteger(value)) onCyclesChange(value);
-                }}
-                onBlur={() => {
-                  // Snap an out-of-range value (typed past the max, or left
-                  // over from another team count) back to a legal one.
-                  // formatCycles is already the resolved display value, so a
-                  // raw pick that doesn't match it is what needs snapping.
-                  if (formatCycles !== cycles) onCyclesChange(formatCycles);
-                }}
-                className="w-16 rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
-              />
-            </span>
-          ) : (
+          {displayTeamCount >= 4 && displayTeamCount % 2 === 0 ? (
             <span className="flex gap-1.5">
-              {FORMAT_OPTIONS.map((option) => (
+              {(
+                [
+                  {
+                    id: 'pairwise' as const,
+                    label: 'Round Robin',
+                    hint: 'Round Robin — every pair of teams meets each round',
+                  },
+                  {
+                    id: 'allteams' as const,
+                    label: 'Rounds N',
+                    hint: 'Rounds N — all teams play in one match every round (e.g. 4v4v4v4)',
+                  },
+                ]
+              ).map((option) => (
                 <button
-                  key={option.cycles}
+                  key={option.id}
                   type="button"
-                  onClick={() => onCyclesChange(option.cycles)}
+                  title={option.hint}
+                  onClick={() => onFormatTypeChange(option.id)}
                   className={`rounded-full px-2.5 py-1 text-[0.65rem] font-medium transition-colors ${
-                    formatCycles === option.cycles
+                    displayFormatType === option.id
                       ? 'bg-accent text-bg'
                       : 'border border-border text-textMuted hover:border-textSub hover:text-text'
                   }`}
@@ -546,7 +538,35 @@ export default function TeamDrafter({
                 </button>
               ))}
             </span>
+          ) : (
+            <span
+              className="rounded-full bg-accent px-2.5 py-1 text-[0.65rem] font-medium text-bg"
+              title="Rounds N — both teams play in one match every round"
+            >
+              Rounds N
+            </span>
           )}
+          <span className="flex items-center gap-1.5">
+            Rounds
+            <input
+              type="number"
+              min={cyclesMin(displayTeamCount, displayFormatType)}
+              max={ROUNDS_MAX}
+              value={formatCycles}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (Number.isInteger(value)) onCyclesChange(value);
+              }}
+              onBlur={() => {
+                // Snap an out-of-range value (typed past the max, or left
+                // over from another mode or team count) back to a legal one.
+                // formatCycles is already the resolved display value, so a
+                // raw pick that doesn't match it is what needs snapping.
+                if (formatCycles !== cycles) onCyclesChange(formatCycles);
+              }}
+              className="w-16 rounded-md border border-border bg-surfaceAlt px-2 py-1 text-xs outline-none focus:border-textSub"
+            />
+          </span>
         </label>
         <button
           type="button"

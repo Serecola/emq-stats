@@ -1,3 +1,7 @@
+import type { FormatType } from './format';
+
+export type { FormatType };
+
 // A team is just an ordered list of usernames. The first name is used
 // as the team's display label everywhere in the UI (e.g. "karira's team").
 export type Team = string[];
@@ -101,14 +105,18 @@ export interface Match {
   // derived from `teams` order and never stored.
   playerRanks: Record<string, number>;
   // How many times each pair of teams meets — the tournament's format:
-  // 1 = "Round Robin Once", 2 = "Round Robin Twice" (the default), and for a
-  // 2-team tournament 2–10 = "Rounds N", how many times the two teams play
-  // each other; 3-team 3v3v3 2–10 = "Rounds N", how many 3v3v3 rounds run
-  // (5 is the legacy default). Absent on matches saved before it existed —
-  // those read through resolveCycles in lib/format.ts, which infers the
-  // historical schedule from the team count. See lib/format.ts for the
-  // legality rules.
+  // The tournament's format — see lib/format.ts. `cycles` is the rounds
+  // count: how many times each pair of teams meets for a Round Robin
+  // (pairwise, 1–10, even counts of 4+ — 2-team and odd-count tournaments
+  // play "Rounds N" instead), or how many rounds a "Rounds N" all-teams
+  // tournament runs (every team in one match per round, 2–10). `formatType`
+  // picks between the two modes; absent on matches saved before either
+  // existed — those read through resolveFormatType / resolveCycles in
+  // lib/format.ts, which infer the historical schedule from the team count
+  // (2 teams and odd counts = all-teams, otherwise a Round Robin defaulting to
+  // 2 cycles).
   cycles?: number;
+  formatType?: FormatType;
   // Tournament stays visible (lists, its own page, exports) but contributes
   // to no player aggregates — last-5 nor all-time. See lib/store.ts
   // `statsMatches` for the single filter every derivation goes through.
@@ -166,11 +174,13 @@ export interface MatchInput {
   renames: Record<string, string>;
   substitutes?: Record<string, string>;
   playerRanks: Record<string, number>;
-  // The tournament's format — see Match.cycles. Optional: a caller that
-  // leaves it undefined (an old client) stores no value and the schedule
-  // falls back to defaultCycles (Round Robin Twice, cycles 2, for every
-  // size).
+  // The tournament's format — see Match.cycles / Match.formatType.
+  // Optional: a caller that leaves one undefined (an old client) stores no
+  // value and the schedule falls back to the same read-time inference old
+  // matches use (Rounds N for 2 or 3 teams, otherwise Round Robin at
+  // cycles 2).
   cycles?: number;
+  formatType?: FormatType;
   excludeFromStats?: boolean;
 }
 

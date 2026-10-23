@@ -54,11 +54,25 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       { status: 400 }
     );
   }
-  // Same format rule as the create route above: the pick must make a legal
-  // schedule for this roster (a 3-team 3v3v3 carries its Rounds count).
+  // Same format rule as the create route: the mode must be a known one and
+  // the pick must make a legal schedule for this roster.
+  if (
+    body.formatType !== undefined &&
+    body.formatType !== 'pairwise' &&
+    body.formatType !== 'allteams'
+  ) {
+    return NextResponse.json(
+      { error: 'Format must be either "Round Robin" (pairwise) or "Rounds N" (allteams).' },
+      { status: 400 }
+    );
+  }
   if (
     body.cycles !== undefined &&
-    !isValidCycles(body.teams.length, resolveCycles(body.teams.length, body.cycles))
+    !isValidCycles(
+      body.teams.length,
+      resolveCycles(body.teams.length, body.cycles, body.formatType),
+      body.formatType
+    )
   ) {
     return NextResponse.json(
       { error: `That format doesn't fit ${body.teams.length} teams.` },

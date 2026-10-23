@@ -78,7 +78,7 @@ export function parseResultsTsv(text: string): { rows: ClipboardResultRow[]; bad
  * two-team fixtures are importable (see matchResultsToFixtures). */
 export interface ImportableFixture {
   slot: string;
-  /** Every team in the fixture: exactly 2 for a pairing, 3 for a 3v3v3 round. */
+  /** Every team in the fixture: exactly 2 for a pairing, every team for an all-teams round. */
   teamIndices: number[];
 }
 
@@ -148,9 +148,9 @@ export function matchResultsToFixtures(
     return ordered.get(key) ?? sorted.get(key.split(' ').slice().sort().join(' ')) ?? null;
   };
 
-  // Fixtures grouped per pairing, in bracket order (1 entry per cycle). A
-  // 3v3v3 round is not a pairing: one TSV row carries two team columns and
-  // can't say which of the three teams its scores belong to, so those
+  // Fixtures grouped per pairing, in bracket order (1 entry per cycle). An
+  // all-teams round is not a pairing: one TSV row carries two team columns and
+  // can't say which of its teams its scores belong to, so those
   // fixtures are left out entirely and their rows fall through to
   // extraRows rather than half-filling a game.
   const pairKey = (i: number, j: number) => `${Math.min(i, j)},${Math.max(i, j)}`;
