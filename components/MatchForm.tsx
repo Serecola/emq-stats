@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import type { FormatType, Match, MatchFile, Mode, Region, SetRanks, Submode } from '@/lib/types';
@@ -171,12 +171,56 @@ export default function MatchForm({
   // pointer is off it — same behaviour as the read-only bracket on the match
   // page, so one squad's whole set of games can be read off either view.
   const [hoveredTeam, setHoveredTeam] = useState<number | null>(null);
-  // Match box the pointer is currently dragging a file over — its card
-  // highlights so it's obvious where the drop will land (null = nowhere).
-  const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
+  // Whether a JSON file is being dragged anywhere in the window. Shown as a
+  // full-screen overlay so the admin knows dropping will attach the export to
+  // the match its players belong to — match cards themselves are no longer
+  // drop targets; every upload is auto-assigned.
+  const [dragOverWindow, setDragOverWindow] = useState(false);
   // Last "Import Results" outcome — a summary of what landed plus anything
   // skipped and why, shown under the bracket toolbar until the next attempt.
   const [importNote, setImportNote] = useState<string | null>(null);
+
+  // Window-level drag and drop: a JSON dropped anywhere on the page is read as
+  // an export and attached to the match its players belong to, decided by
+  // matchFilesToBracket — the same matcher the batch zone uses. Match cards
+  // are not drop targets; every upload is auto-assigned.
+  useEffect(() => {
+    function onDragEnter(e: DragEvent) {
+      if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files'))
+        return;
+      e.preventDefault();
+      setDragOverWindow(true);
+    }
+    function onDragOver(e: DragEvent) {
+      if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files'))
+        return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    function onDragLeave(_e: DragEvent) {
+      setDragOverWindow(false);
+    }
+    function onDragEnd(_e: DragEvent) {
+      setDragOverWindow(false);
+    }
+    function onDrop(e: DragEvent) {
+      e.preventDefault();
+      setDragOverWindow(false);
+      intake(e.dataTransfer?.files ?? null);
+    }
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('dragend', onDragEnd);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('dragend', onDragEnd);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [intake]);
 
   const parsedTeams = useMemo(() => parseTeamsBlob(teamsText), [teamsText]);
   // Merge over any existing ranks so re-saving without re-annotating the
@@ -539,6 +583,18 @@ export default function MatchForm({
       return;
     }
     detachFiles([id]);
+  }
+
+  /**
+   * Clears the scores typed against one fixture's file without removing the
+   * file itself. The upload stays attached; only its score entries are dropped.
+   */
+  function clearScores(fileId: string, label?: string) {
+    setScores((prev) => {
+      const next = { ...prev };
+      delete next[fileId];
+      return next;
+    });
   }
 
   /**
@@ -965,10 +1021,28 @@ export default function MatchForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="space-y-6"
+      className="space-y-6 relative"
       onDragOver={blockFileDrop}
       onDrop={blockFileDrop}
     >
+      {/* Full-screen drop overlay: appears when a file is dragged over the
+          window outside any specific drop zone. Dropping here attaches the
+          export to the match its players belong to (via matchFilesToBracket). */}
+      {dragOverWindow && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Drop JSON export here"
+        >
+          <div className="rounded-lg border border-taken/60 bg-taken/10 px-6 py-4 shadow-2xl">
+            <p className="font-medium text-taken">Drop JSON export here</p>
+            <p className="text-xs text-textMuted">
+              It will be attached to the match its players belong to.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Only a saved tournament has a player-view link — a new one has no id
           to link to until it's created (and lands on this same Edit screen,
           where the section then appears). */}
@@ -1296,8 +1370,8 @@ export default function MatchForm({
           )}
           {/* The bracket outside the cards doubles as the batch drop zone:
               several exports at once, each bound to a fixture by the players
-              in its JSON. A card stops the drop before it reaches here when
-              the file is meant for one specific match. */}
+              in its JSON. Match cards themselves are no longer drop targets —
+              every upload is auto-assigned by the players detected in its JSON. */}
           <div
             className="space-y-3"
             onMouseLeave={() => setHoveredTeam(null)}
@@ -1308,7 +1382,6 @@ export default function MatchForm({
             }}
             onDrop={(e) => {
               e.preventDefault();
-              setDragOverSlot(null);
               intake(e.dataTransfer.files);
             }}
           >
@@ -1321,6 +1394,15 @@ export default function MatchForm({
                   {round.matchups.map((m) => {
                     const file = assignment.bySlot[m.slot];
                     const draft = file ? draftById.get(file.id) : undefined;
+                    // Scores typed against this fixture's file (a real upload or
+                    // a placeholder created by scoring without a JSON). Used to
+                    // decide whether to show "Clear Scores" instead of nothing.
+                    const slotScores = file ? scores[file.id] : undefined;
+                    const hasScores = slotScores
+                      ? Object.values(slotScores).some(
+                          (v) => v !== undefined && v !== null && v !== ''
+                        )
+                      : false;
                     // One box per team in the fixture — two for a round-robin
                     // pairing, every team for an all-teams round — each
                     // holding exactly what was typed.
@@ -1362,31 +1444,10 @@ export default function MatchForm({
                     return (
                       <div
                         key={m.slot}
-                        // A match box is also a drop target: a JSON dropped
-                        // here is attached to this fixture specifically.
-                        onDragOver={(e) => {
-                          if (!Array.from(e.dataTransfer.types).includes('Files')) return;
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = 'copy';
-                          setDragOverSlot(m.slot);
-                        }}
-                        onDragLeave={(e) => {
-                          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                            setDragOverSlot(null);
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation(); // not the bracket-level batch upload
-                          setDragOverSlot(null);
-                          intake(e.dataTransfer.files, m.slot);
-                        }}
                         className={`rounded-md border px-2 py-1 ${
-                          dragOverSlot === m.slot
-                            ? 'border-accent bg-accent/10'
-                            : bothScored
-                              ? 'border-border bg-surface'
-                              : 'border-dashed border-border bg-surface/40'
+                          bothScored
+                            ? 'border-border bg-surface'
+                            : 'border-dashed border-border bg-surface/40'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -1406,13 +1467,34 @@ export default function MatchForm({
                               >
                                 {exportDisplayLabel(draft.label) || 'Untitled'}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => removeFile(draft.id, exportDisplayLabel(draft.label))}
-                                className="text-[0.65rem] text-textDim hover:text-taken"
-                              >
-                                Remove
-                              </button>
+                              {/* "Remove Json" only detaches a real uploaded file.
+                                  Placeholders (text === '') are created by typing
+                                  scores without a JSON — they have nothing to remove. */}
+                              {draft.text.trim() ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeFile(draft.id, exportDisplayLabel(draft.label))
+                                  }
+                                  className="text-[0.65rem] text-textDim hover:text-taken"
+                                >
+                                  Remove Json
+                                </button>
+                              ) : null}
+                              {/* "Clear Scores" drops only the typed scores, keeping
+                                  the file attached. Shown whenever scores exist —
+                                  including on placeholders with no JSON. */}
+                              {hasScores ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    clearScores(draft.id, exportDisplayLabel(draft.label))
+                                  }
+                                  className="text-[0.65rem] text-textDim hover:text-taken"
+                                >
+                                  Clear Scores
+                                </button>
+                              ) : null}
                             </div>
                           ) : (
                             <label
@@ -1557,7 +1639,7 @@ export default function MatchForm({
                     onClick={() => removeFile(c.id, exportDisplayLabel(c.label) || c.id)}
                     className="flex-shrink-0 text-xs text-textDim hover:text-taken"
                   >
-                    Remove
+                    Remove Json
                   </button>
                 </div>
               ))}
@@ -1583,7 +1665,7 @@ export default function MatchForm({
                 onClick={() => removeFile(f.id, exportDisplayLabel(f.label) || f.id)}
                 className="flex-shrink-0 text-xs text-textDim hover:text-taken"
               >
-                Remove
+                Remove Json
               </button>
             </div>
           ))}
