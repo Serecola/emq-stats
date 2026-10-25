@@ -313,10 +313,7 @@ export default function TeamDrafter({
   return (
     <div className="mt-3 border-t border-border pt-3">
       <label className="block text-xs font-medium text-textMuted">
-        Auto-draft teams{' '}
-        <span className="text-textDim">
-          (paste a players list, pick a rank source, then pick a balanced split)
-        </span>
+        Auto-draft teams
       </label>
 
       {/* Rank source — which table the balance reads underneath the Ranks
@@ -403,7 +400,7 @@ export default function TeamDrafter({
           <label className="mb-1 block text-[0.65rem] uppercase tracking-wide text-textDim">
             Ranks{' '}
             <span className="normal-case text-textDim">
-              (optional — overrides the source above)
+              (optional)
             </span>
           </label>
           <textarea
@@ -411,7 +408,7 @@ export default function TeamDrafter({
             onChange={(e) => setRanksText(e.target.value)}
             rows={3}
             spellCheck={false}
-            placeholder="Copypaste from Tour Sheet"
+            placeholder="Format: ''Name: Rank''"
             className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-2 py-1.5 font-mono text-xs outline-none focus:border-textSub"
           />
         </div>

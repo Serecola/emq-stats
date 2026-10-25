@@ -978,7 +978,7 @@ export default function MatchForm({
         <label className="mb-1 block text-xs font-medium text-textMuted">
           {/* Sub-mode is mandatory for the modes that offer one; Custom has
               none, so there is nothing extra to pick for it. */}
-          Tournament <span className="text-textDim">(date, region and mode are mandatory — sub-mode too, where the mode has one)</span>
+          Tournament
         </label>
         <div className="flex flex-wrap gap-2">
           <input

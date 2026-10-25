@@ -20,11 +20,15 @@ import {
   type PlayerMatchEntry,
 } from '@/lib/player-stats';
 import { TABLE_ROW_CLASS } from '@/lib/table-row';
+import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
+import BackToTop from '@/components/BackToTop';
 import {
   matchFilterLabel,
   matchFilterQuery,
   parseSubmodeFilter,
 } from '@/lib/match-filter';
+import { paginate, parsePage } from '@/lib/pagination';
+import PaginationNav from '@/components/PaginationNav';
 import {
   parseStatsRange,
   playerViewQuery,
@@ -60,7 +64,12 @@ export default async function PlayerPage({
   searchParams,
 }: {
   params: { uname: string };
-  searchParams: { mode?: string; submode?: string; range?: string };
+  searchParams: {
+    mode?: string;
+    submode?: string;
+    range?: string;
+    page?: string;
+  };
 }) {
   const uname = decodeURIComponent(params.uname);
   // Like /players, this view always works inside exactly one mode + sub-mode
@@ -70,6 +79,9 @@ export default async function PlayerPage({
   // Which slice of the player's history this page shows: their last
   // RECENT_TOUR_COUNT tournaments, unless the URL asks for all of them.
   const range = parseStatsRange(searchParams);
+  // Which page of the tournament list this view shows, keeping ?page= in the
+  // URL so the list is bookmarkable and shareable (see lib/pagination).
+  const page = parsePage(searchParams);
   const player = await findPlayerStats(uname, filter);
   const filterLabel = matchFilterLabel(filter);
   // Global Player/Bot tag for the header pill (see PlayerTagBadge).
@@ -121,6 +133,11 @@ export default async function PlayerPage({
 
   const ngmcEntries = view.entries.filter((e) => e.mode !== 'Erumode');
   const erumodeEntries = view.entries.filter((e) => e.mode === 'Erumode');
+  // Only the tournament *list* is paginated (one page holds TOURS_PER_PAGE).
+  // The stat cards, synergy and misses stay scoped to the whole `view.entries`,
+  // so they read the same figures no matter which page of the list is open.
+  const erumodePage = paginate(erumodeEntries, page);
+  const ngmcPage = paginate(ngmcEntries, page);
   // Under a concrete mode + sub-mode filter every entry is that mode's, but
   // splitting defensively keeps both sections honest for any future caller.
   const showErumode = filter.mode === 'Erumode' || erumodeEntries.length > 0;
@@ -180,8 +197,25 @@ export default async function PlayerPage({
     missesError = err;
   }
 
+  // Jump targets for the left-hand rail (MatchSectionNav). Listed in the order
+  // they appear and gated on the same conditions that render each block, so a
+  // link never points at a section that isn't on the page. With fewer than two
+  // sections the rail renders nothing — one section is a page, not a menu.
+  const jumpSections: JumpSection[] = [
+    ...(showErumode && view.erumode.matchesPlayed > 0
+      ? [{ id: 'erumode', label: 'Erumode' }]
+      : []),
+    ...(showNgmc && view.ngmc.matchesPlayed > 0
+      ? [{ id: 'ngmc', label: 'NGMC' }]
+      : []),
+    ...(synergyError || synergy?.hasData ? [{ id: 'synergy', label: 'Synergy' }] : []),
+    ...(missesError || misses?.hasData ? [{ id: 'most-missed', label: 'Most Missed' }] : []),
+  ];
+
   return (
     <div className="space-y-6">
+      <MatchSectionNav sections={jumpSections} />
+      <BackToTop />
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link
@@ -222,19 +256,24 @@ export default async function PlayerPage({
       {/* Mode priority: Erumode's section is shown before NGMC's everywhere a
           mode is listed (see MODES in lib/types.ts). */}
       {showErumode && view.erumode.matchesPlayed > 0 && (
-        <section className="space-y-2">
+        <section id="erumode" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Erumode</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Guess Rate" value={pct(view.erumode.overallGuessRate)} />
             <TierAssignmentCard entries={erumodeEntries} />
             {winRateCard(record, winRate)}
           </div>
-          <MatchHistoryTable entries={erumodeEntries} showAttacksBlocks={false} />
+          <PaginationNav
+            basePath={`/players/${encodeURIComponent(player.uname)}`}
+            searchParams={searchParams}
+            page={erumodePage}
+          />
+          <MatchHistoryTable entries={erumodePage.items} showAttacksBlocks={false} />
         </section>
       )}
 
       {showNgmc && view.ngmc.matchesPlayed > 0 && (
-        <section className="space-y-2">
+        <section id="ngmc" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">NGMC</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <StatCard label="Guess Rate" value={pct(view.ngmc.overallGuessRate)} />
@@ -261,7 +300,12 @@ export default async function PlayerPage({
             />
             {winRateCard(record, winRate)}
           </div>
-          <MatchHistoryTable entries={ngmcEntries} showAttacksBlocks />
+          <PaginationNav
+            basePath={`/players/${encodeURIComponent(player.uname)}`}
+            searchParams={searchParams}
+            page={ngmcPage}
+          />
+          <MatchHistoryTable entries={ngmcPage.items} showAttacksBlocks />
         </section>
       )}
 
@@ -282,12 +326,12 @@ export default async function PlayerPage({
           chance in this player's room shows no heading at all, rather than a
           heading over an empty table. */}
       {synergyError ? (
-        <section className="space-y-2">
+        <section id="synergy" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
           <ErrorBox label="Synergy" err={synergyError} />
         </section>
       ) : synergy?.hasData ? (
-        <section className="space-y-2">
+        <section id="synergy" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
           <PlayerSynergySection stats={synergy} filter={filter} playerTags={tags} />
         </section>
@@ -301,12 +345,12 @@ export default async function PlayerPage({
           in which nothing was missed shows no heading rather than a heading
           over an empty table. */}
       {missesError ? (
-        <section className="space-y-2">
+        <section id="most-missed" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Most Missed</h2>
           <ErrorBox label="Most missed" err={missesError} />
         </section>
       ) : misses?.hasData ? (
-        <section className="space-y-2">
+        <section id="most-missed" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Most Missed</h2>
           <PlayerMissesSection stats={misses} />
         </section>
