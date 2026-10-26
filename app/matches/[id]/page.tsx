@@ -78,12 +78,6 @@ export default async function MatchPage({
   // win — see withAliases.
   const renames = withAliases(match.renames, await listPlayerAliases());
 
-  const date = new Date(match.createdAt).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
   // Treat matches saved before `mode` existed (empty string) as NGMC rather
   // than silently hiding NGMC-only sections — only an explicit "Erumode"
   // opts out.
@@ -267,9 +261,6 @@ export default async function MatchPage({
           </div>
         )}
         <h1 className="mt-2 text-lg font-semibold">{match.title}</h1>
-        <p className="text-xs text-textDim">
-          {date} · {match.files.length} file{match.files.length !== 1 ? 's' : ''}
-        </p>
       </div>
 
       <section id="bracket" className="space-y-3 scroll-mt-16">

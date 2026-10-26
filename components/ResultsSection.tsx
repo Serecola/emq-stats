@@ -41,28 +41,34 @@ export default function ResultsSection({
         {/* Every name on the podium carries its team's color, so the card ties
             back to the same player's row in the table below. */}
         {results.podium.map((team, i) => (
-          <div
-            key={team.teamIndex}
-            className={`rounded-lg border p-4 text-center ${PODIUM_STYLES[i].bg} ${PODIUM_STYLES[i].border} ${PODIUM_STYLES[i].order}`}
-          >
-            <div className={`text-xs font-semibold uppercase tracking-wide ${PODIUM_STYLES[i].text}`}>
-              {PODIUM_STYLES[i].place}
-            </div>
-            <div className="mt-1 truncate text-base font-semibold">
-              <span style={{ color: teamColor(team.teamIndex) }}>{team.label}</span>&apos;s team
-            </div>
-            <div className="mt-1 text-xs text-textMuted">
-              {team.members.map((name, j) => (
-                <span key={`${name}-${j}`}>
-                  {j > 0 && ', '}
-                  <span style={{ color: teamColor(team.teamIndex) }}>{name}</span>
-                </span>
-              ))}
-            </div>
-            <div className="mt-2 text-sm text-textSub">
-              {threeWay
-                ? `${team.pts} pts · ${team.totalScore} score · ${team.firsts} 1st · ${team.seconds} 2nd · ${team.thirds} 3rd`
-                : `${team.matchWins}-${team.matchLosses}-${team.matchTies} · ${team.pts} pts`}
+          <div key={team.teamIndex} className={`rounded-lg border p-4 ${PODIUM_STYLES[i].bg} ${PODIUM_STYLES[i].border} ${PODIUM_STYLES[i].order}`}>
+            <div className="flex items-stretch gap-0">
+              {/* Left: standing */}
+              <div
+                className={`shrink-0 flex items-center justify-center border-r border-border/50 pr-4 ${PODIUM_STYLES[i].text}`}
+                style={{ fontSize: '1.5rem', fontWeight: '700', minWidth: '56px' }}
+              >
+                {PODIUM_STYLES[i].place}
+              </div>
+              {/* Right: team, its members and the details, stacked and centered within the right-hand space */}
+              <div className="min-w-0 flex-1 flex flex-col justify-center items-center text-center pl-4">
+                <div className="truncate text-lg font-semibold">
+                  <span style={{ color: teamColor(team.teamIndex) }}>{team.label}</span>'s team
+                </div>
+                <div className="mt-1 text-base font-semibold text-textMuted">
+                  {team.members.map((name, j) => (
+                    <span key={`${name}-${j}`}>
+                      {j > 0 && ', '}
+                      <span style={{ color: teamColor(team.teamIndex) }}>{name}</span>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 text-base text-textSub">
+                  {threeWay
+                    ? `${team.pts} pts · ${team.totalScore} score · ${team.firsts} 1st · ${team.seconds} 2nd · ${team.thirds} 3rd`
+                    : `${team.matchWins}-${team.matchLosses}-${team.matchTies} · ${team.pts} pts`}
+                </div>
+              </div>
             </div>
           </div>
         ))}
