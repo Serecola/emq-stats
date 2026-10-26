@@ -1,4 +1,4 @@
-import { getSongs, norm } from './stats';
+import { getSongs, getVNSource, norm } from './stats';
 import { readAnswers, synergyRead, type SongAnswers, type SynergyRead } from './synergy';
 import { withAliases, type PlayerAliases } from './player-aliases';
 import type { Match } from './types';
@@ -237,4 +237,105 @@ export function computePlayerSynergy(
   );
 
   return { uname, partners: list, totalMatches: matches.length, hasData: list.length > 0 };
+}
+
+/** One VN title this player net-misses from one partner's list. */
+export interface PartnerVnMiss {
+  vn: string;
+  /** net misses shown (misses − hits) */
+  count: number;
+  /** misses alone (shown in red) */
+  misses: number;
+  /** correct guesses alone (shown in green) */
+  hits: number;
+}
+
+/**
+ * The VN titles this player most often net-misses from each partner's list,
+ * grouped by partner — the per-pair companion to the pooled Most Missed
+ * section.
+ *
+ * A miss is one answer type the partner had on their list that this player
+ * got wrong; a hit (same song + answer type on their list that this player got
+ * right) subtracts one. The running total is misses − hits, grouped by the
+ * song's VN (so an Erumode song missed on both Mst and A counts twice, the
+ * same way a synergy read counts per-answer-type chances). Keyed by the
+ * partner's normalized username so the player page can look a partner up
+ * without caring about display casing. Partners with no net-missed VNs in
+ * scope are absent.
+ */
+export function computePlayerSynergyVnMisses(
+  matches: Pick<Match, 'teams' | 'files' | 'mode' | 'renames' | 'substitutes'>[],
+  uname: string,
+  aliases: PlayerAliases = {}
+): Record<string, PartnerVnMiss[]> {
+  const byPartner = new Map<string, Map<string, { misses: number; hits: number; title: string }>>();
+  const selfKey = norm(uname);
+
+  for (const match of matches) {
+    const renames = withAliases(match.renames ?? {}, aliases);
+    const isErumode = match.mode === 'Erumode';
+
+    // Roster first, so every displayed name (and the decision to count someone
+    // at all) comes from the roster rather than from the export's casing.
+    const roster = new Map<string, string>();
+    match.teams.forEach((team) => {
+      for (const name of team) roster.set(norm(name), name);
+    });
+    for (const [subKey, target] of Object.entries(match.substitutes ?? {})) {
+      const key = norm(subKey);
+      if (roster.has(key) || !roster.has(norm(target))) continue;
+      roster.set(key, key);
+    }
+
+    // Not in this tournament — no chances in either direction.
+    if (!roster.has(selfKey)) continue;
+
+    for (const file of match.files) {
+      for (const song of getSongs(file.data)) {
+        const pgi = song?.PlayerGuessInfos ?? {};
+        const present: { key: string; answers: SongAnswers['byType'] }[] = [];
+        for (const pd of Object.values(pgi) as any[]) {
+          const answers = readAnswers(pd, isErumode);
+          if (!answers) continue;
+          const key = norm(renames[norm(answers.username)] || answers.username);
+          if (!roster.has(key)) continue;
+          present.push({ key, answers: answers.byType });
+        }
+
+        const me = present.find((p) => p.key === selfKey);
+        if (!me) continue;
+
+        for (const other of present) {
+          if (other.key === selfKey) continue;
+          for (const [type, myAnswer] of Object.entries(me.answers)) {
+            // Not on their list — not from their list at all.
+            if (!other.answers[type]?.onList) continue;
+            const source = getVNSource(song);
+            if (!source) continue;
+            const vnMap = byPartner.get(other.key) ?? new Map();
+            const entry = vnMap.get(source.id) ?? { misses: 0, hits: 0, title: source.title };
+            if (myAnswer.correct) entry.hits++;
+            else entry.misses++;
+            vnMap.set(source.id, entry);
+            byPartner.set(other.key, vnMap);
+          }
+        }
+      }
+    }
+  }
+
+  const out: Record<string, PartnerVnMiss[]> = {};
+  for (const [partnerKey, vnMap] of byPartner) {
+    out[partnerKey] = [...vnMap.entries()]
+      .map(([vnKey, e]) => ({
+        vn: e.title,
+        count: e.misses - e.hits,
+        misses: e.misses,
+        hits: e.hits,
+      }))
+      .filter((e) => e.count > 0)
+      .sort((a, b) => b.count - a.count || a.vn.localeCompare(b.vn));
+  }
+  return out;
 }

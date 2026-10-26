@@ -7,7 +7,7 @@ import { extractCatalogFromFiles } from './catalog';
 import { MODES, SUBMODES_BY_MODE } from './types';
 import { ALL_MATCH_FILTER, applyMatchFilter, type MatchFilter } from './match-filter';
 import { computeAllPlayerStats, type PlayerSummary } from './player-stats';
-import { computePlayerSynergy, type PlayerSynergyStats } from './player-synergy';
+import { computePlayerSynergy, computePlayerSynergyVnMisses, type PartnerVnMiss, type PlayerSynergyStats } from './player-synergy';
 import { computePlayerMisses, type PlayerMissStats } from './player-misses';
 import { computePlayerGameRecords, type PlayerGameRecord } from './results';
 import { computePlayerRankRows, expectedRanksFor, recentExpectedRanksFor, recentVnExpectedRanksFor, type PlayerRankRow } from './player-ranks';
@@ -650,6 +650,29 @@ export async function findPlayerMisses(
     );
     if (!matches.length) return null;
     return computePlayerMisses(matches, uname, await listPlayerAliases());
+  });
+}
+
+/**
+ * One player's VN titles missed from each partner's list, under `filter` —
+ * the per-partner data for the player page's Synergy section. Same scope and
+ * caching shape as `findPlayerSynergy` / `findPlayerMisses` above.
+ */
+export async function findPlayerSynergyVnMisses(
+  uname: string,
+  filter: MatchFilter,
+  matchIds: string[]
+): Promise<Record<string, PartnerVnMiss[]> | null> {
+  await ensureSchema();
+  const key = resolveAliasKey(uname, await listPlayerAliases());
+  const scope = matchIds.join(',');
+  return cached(`player-synergy-vn-misses:${filter.mode}:${filter.submode}:${key}:${scope}`, async () => {
+    const wanted = new Set(matchIds);
+    const matches = applyMatchFilter(statsMatches(await listMatches()), filter).filter((m) =>
+      wanted.has(m.id)
+    );
+    if (!matches.length) return null;
+    return computePlayerSynergyVnMisses(matches, uname, await listPlayerAliases());
   });
 }
 

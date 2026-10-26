@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { PlayerSynergyStats, PartnerSynergy } from '@/lib/player-synergy';
+import type { PartnerSynergy, PartnerVnMiss, PlayerSynergyStats } from '@/lib/player-synergy';
 import type { PlayerTag } from '@/lib/types';
+import { norm } from '@/lib/stats';
 import { matchFilterQuery, type MatchFilter } from '@/lib/match-filter';
 import {
   DENSE_CELL_PAD,
@@ -17,7 +18,7 @@ import {
 import ReadValue from './SynergyReadValue';
 import PlayerTagBadge from './PlayerTagBadge';
 import { resolvePlayerTag } from '@/lib/player-tags';
-import { TABLE_ROW_CLASS } from '@/lib/table-row';
+import { TABLE_ROW_CLASS, TABLE_ROW_NO_BORDER_CLASS } from '@/lib/table-row';
 
 type SortKey = 'uname' | 'read' | 'readBy' | 'teammateMatches';
 
@@ -58,15 +59,18 @@ function PartnerName({
   partner,
   filter,
   playerTags,
+  onClick,
 }: {
   partner: PartnerSynergy;
   filter: MatchFilter;
   playerTags?: Record<string, PlayerTag>;
+  onClick?: (e: React.MouseEvent) => void;
 }) {
   return (
     <Link
       href={`/players/${encodeURIComponent(partner.uname)}${matchFilterQuery(filter)}`}
       className="min-w-0 font-medium hover:underline"
+      onClick={onClick}
     >
       {partner.uname}
       <PlayerTagBadge uname={partner.uname} overrides={playerTags} className="ml-1.5" />
@@ -108,6 +112,151 @@ function FilterToggle({
 }
 
 /**
+ * One partner row: the ranking cells plus an expand control that reveals the
+ * VN titles this player most missed from that partner's list. Clicking the row
+ * (anywhere but the partner's name link) toggles the sub-row open and closed.
+ */
+function PartnerRow({
+  partner,
+  rank,
+  filter,
+  playerTags,
+  vnMisses,
+}: {
+  partner: PartnerSynergy;
+  rank: number;
+  filter: MatchFilter;
+  playerTags?: Record<string, PlayerTag>;
+  /** VN titles this player missed from this partner's list, most-missed first. */
+  vnMisses: PartnerVnMiss[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  // Only show VNs with a positive net miss (misses minus correct guesses).
+  const displayMisses = vnMisses.filter((m) => m.count >= 1);
+  const hasMisses = displayMisses.length > 0;
+  const pageCount = Math.max(1, Math.ceil(displayMisses.length / 5));
+  const current = Math.min(page, pageCount);
+  const visible = displayMisses.slice((current - 1) * 5, current * 5);
+
+  return (
+    <>
+      <tr
+        key={partner.uname}
+        className={TABLE_ROW_CLASS}
+        onClick={() => {
+          if (!hasMisses) return;
+          setOpen((o) => {
+            const next = !o;
+            if (next) setPage(1);
+            return next;
+          });
+        }}
+      >
+        <td className={`${DENSE_CELL_PAD} text-textDim`}>{rank}</td>
+        <td className={DENSE_CELL_PAD}>
+          <div className="flex items-center gap-2">
+            <PartnerName
+              partner={partner}
+              filter={filter}
+              playerTags={playerTags}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!hasMisses) return;
+                setOpen((o) => {
+                  const next = !o;
+                  if (next) setPage(1);
+                  return next;
+                });
+              }}
+              aria-expanded={open}
+              title={
+                hasMisses
+                  ? `Missed VNs from ${partner.uname}'s list`
+                  : 'No missed VNs from this partner'
+              }
+              disabled={!hasMisses}
+              className={`shrink-0 text-textDim transition-transform duration-200 hover:text-text ${
+                open ? 'text-accent rotate-90' : ''
+              }`}
+            >
+              ▸
+            </button>
+          </div>
+        </td>
+        <td className={`${DENSE_CELL_PAD} text-right tabular-nums`}>
+          {partner.teammateMatches}
+        </td>
+        <td className={`${DENSE_CELL_PAD} text-right`}>
+          <ReadValue read={partner.read} color />
+        </td>
+        <td className={`${DENSE_CELL_PAD} text-right`}>
+          <ReadValue read={partner.readBy} color />
+        </td>
+      </tr>
+      {open && hasMisses && (
+        <tr key={`${partner.uname}-misses`} className={TABLE_ROW_NO_BORDER_CLASS}>
+          <td colSpan={5} className={`${DENSE_CELL_PAD} p-0`}>
+            <div className="border-t border-borderSub bg-surface px-3 py-2">
+              <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-textMuted mb-2">
+                Missed VNs from their list
+              </div>
+              <ul className="space-y-1 text-[0.72rem]">
+                {visible.map((m) => (
+                  <li key={m.vn} className="flex items-baseline gap-2 [overflow-wrap:anywhere]">
+                    <span>{m.vn}</span>
+                    <span className="text-textMuted">×{m.count}</span>
+                    {m.hits > 0 && (
+                      <span className="text-textMuted">
+                        (
+                        <span className="text-taken"> −{m.misses}</span> /
+                        <span className="text-promote"> +{m.hits}</span>
+                        )
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {pageCount > 1 && (
+                <div className="flex items-center justify-start gap-1.5 mt-2 border-t border-borderSub pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={current <= 1}
+                    className={`rounded-md border border-border px-2 py-0.5 text-[0.65rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      current <= 1 ? '' : 'text-textSub hover:border-textSub hover:text-text'
+                    }`}
+                  >
+                    ← Prev
+                  </button>
+                  <span className="text-[0.65rem] text-textMuted">
+                    Page {current} of {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={current >= pageCount}
+                    className={`rounded-md border border-border px-2 py-0.5 text-[0.65rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      current >= pageCount ? '' : 'text-textSub hover:border-textSub hover:text-text'
+                    }`}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/**
  * The ranking itself: every other player this one has shared a tournament with,
  * strongest read first, sortable by either direction or by name.
  *
@@ -122,10 +271,13 @@ function PartnerTable({
   stats,
   filter,
   playerTags,
+  vnMisses,
 }: {
   stats: PlayerSynergyStats;
   filter: MatchFilter;
   playerTags?: Record<string, PlayerTag>;
+  /** norm(partner) -> VN titles this player missed from that partner's list. */
+  vnMisses: Record<string, PartnerVnMiss[]>;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('read');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -257,26 +409,14 @@ function PartnerTable({
           </thead>
           <tbody>
             {visible.map((p, i) => (
-              <tr key={p.uname} className={TABLE_ROW_CLASS}>
-                {/* Ranked across the whole list, not the page: page two starts at
-                    11, so the number still means "this player's placing overall"
-                    rather than restarting on every screen. */}
-                <td className={`${DENSE_CELL_PAD} text-textDim`}>
-                  {(current - 1) * PAGE_SIZE + i + 1}
-                </td>
-                <td className={DENSE_CELL_PAD}>
-                  <PartnerName partner={p} filter={filter} playerTags={playerTags} />
-                </td>
-                <td className={`${DENSE_CELL_PAD} text-right tabular-nums`}>
-                  {p.teammateMatches}
-                </td>
-                <td className={`${DENSE_CELL_PAD} text-right`}>
-                  <ReadValue read={p.read} color />
-                </td>
-                <td className={`${DENSE_CELL_PAD} text-right`}>
-                  <ReadValue read={p.readBy} color />
-                </td>
-              </tr>
+              <PartnerRow
+                key={p.uname}
+                partner={p}
+                rank={(current - 1) * PAGE_SIZE + i + 1}
+                filter={filter}
+                playerTags={playerTags}
+                vnMisses={vnMisses[norm(p.uname)] ?? []}
+              />
             ))}
           </tbody>
         </table>
@@ -366,12 +506,15 @@ export default function PlayerSynergySection({
   stats,
   filter,
   playerTags,
+  vnMisses,
 }: {
   stats: PlayerSynergyStats;
   /** the page's mode + sub-mode, carried through to each partner's link */
   filter: MatchFilter;
   /** Global Player/Bot tags — usernames tagged Bot get a pill by their name. */
   playerTags?: Record<string, PlayerTag>;
+  /** norm(partner) -> VN titles this player missed from that partner's list. */
+  vnMisses: Record<string, PartnerVnMiss[]>;
 }) {
   if (!stats.hasData) return null;
 
@@ -379,7 +522,7 @@ export default function PlayerSynergySection({
 
   return (
     <div className="space-y-2">
-      <PartnerTable stats={stats} filter={filter} playerTags={playerTags} />
+      <PartnerTable stats={stats} filter={filter} playerTags={playerTags} vnMisses={vnMisses} />
     </div>
   );
 }

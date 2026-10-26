@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { findPlayerStats, findPlayerMisses, findPlayerSynergy, findPlayerGameRecord, listPlayerTags } from '@/lib/store';
+import { findPlayerStats, findPlayerMisses, findPlayerSynergy, findPlayerSynergyVnMisses, findPlayerGameRecord, listPlayerTags } from '@/lib/store';
 import { MIN_GAMES_FOR_WINRATE, winRatePct, type PlayerGameRecord } from '@/lib/results';
 import PlayerTagBadge from '@/components/PlayerTagBadge';
 import ModeToggle from '@/components/ModeToggle';
@@ -8,7 +8,7 @@ import StatsRangeToggle from '@/components/StatsRangeToggle';
 import ExpectationBadge from '@/components/ExpectationBadge';
 import PlayerSynergySection from '@/components/PlayerSynergySection';
 import PlayerMissesSection from '@/components/PlayerMissesSection';
-import type { PlayerSynergyStats } from '@/lib/player-synergy';
+import type { PartnerVnMiss, PlayerSynergyStats } from '@/lib/player-synergy';
 import type { PlayerMissStats } from '@/lib/player-misses';
 import {
   entryExpectation,
@@ -197,6 +197,19 @@ export default async function PlayerPage({
     missesError = err;
   }
 
+  // Which VN titles this player missed from each synergy partner's list —
+  // scoped to the same tournaments in view, cached like synergy and misses.
+  let vnMisses: Record<string, PartnerVnMiss[]> | null = null;
+  try {
+    vnMisses = await findPlayerSynergyVnMisses(
+      player.uname,
+      filter,
+      view.entries.map((e) => e.matchId)
+    );
+  } catch {
+    // Left null on purpose — the dropdown simply stays closed per partner.
+  }
+
   // Jump targets for the left-hand rail (MatchSectionNav). Listed in the order
   // they appear and gated on the same conditions that render each block, so a
   // link never points at a section that isn't on the page. With fewer than two
@@ -333,7 +346,7 @@ export default async function PlayerPage({
       ) : synergy?.hasData ? (
         <section id="synergy" className="scroll-mt-16 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-textMuted">Synergy</h2>
-          <PlayerSynergySection stats={synergy} filter={filter} playerTags={tags} />
+          <PlayerSynergySection stats={synergy} filter={filter} playerTags={tags} vnMisses={vnMisses ?? {}} />
         </section>
       ) : null}
 
