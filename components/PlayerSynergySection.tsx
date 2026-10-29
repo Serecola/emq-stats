@@ -20,13 +20,14 @@ import PlayerTagBadge from './PlayerTagBadge';
 import { resolvePlayerTag } from '@/lib/player-tags';
 import { TABLE_ROW_CLASS, TABLE_ROW_NO_BORDER_CLASS } from '@/lib/table-row';
 
-type SortKey = 'uname' | 'read' | 'readBy' | 'teammateMatches';
+type SortKey = 'uname' | 'read' | 'readBy' | 'teammateMatches' | 'playedAgainstMatches';
 
 const KEY_OF: Record<SortKey, (p: PartnerSynergy) => number | string> = {
   uname: (p) => p.uname.toLowerCase(),
   read: (p) => p.read.rate,
   readBy: (p) => p.readBy.rate,
   teammateMatches: (p) => p.teammateMatches,
+  playedAgainstMatches: (p) => p.playedAgainstMatches,
 };
 
 /**
@@ -191,6 +192,9 @@ function PartnerRow({
         <td className={`${DENSE_CELL_PAD} text-right tabular-nums`}>
           {partner.teammateMatches}
         </td>
+        <td className={`${DENSE_CELL_PAD} text-right tabular-nums`}>
+          {partner.playedAgainstMatches}
+        </td>
         <td className={`${DENSE_CELL_PAD} text-right`}>
           <ReadValue read={partner.read} color />
         </td>
@@ -200,7 +204,7 @@ function PartnerRow({
       </tr>
       {open && hasMisses && (
         <tr key={`${partner.uname}-misses`} className={TABLE_ROW_NO_BORDER_CLASS}>
-          <td colSpan={5} className={`${DENSE_CELL_PAD} p-0`}>
+          <td colSpan={6} className={`${DENSE_CELL_PAD} p-0`}>
             <div className="border-t border-borderSub bg-surface px-3 py-2">
               <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-textMuted mb-2">
                 Missed VNs from their list
@@ -394,6 +398,11 @@ function PartnerTable({
                 'Times teamed',
                 'teammateMatches',
                 'Tournaments in view where you two played on the same team'
+              )}
+              {header(
+                'Times against',
+                'playedAgainstMatches',
+                'Tournaments in view where you two played on opposing teams'
               )}
               {header(
                 'You snipe them',

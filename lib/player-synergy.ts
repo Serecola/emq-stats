@@ -45,6 +45,8 @@ export interface PartnerSynergy {
   readBy: SynergyRead;
   /** tournaments in scope where the two played on the same team */
   teammateMatches: number;
+  /** tournaments in scope where the two played on opposing teams */
+  playedAgainstMatches: number;
 }
 
 export interface PlayerSynergyStats {
@@ -72,6 +74,7 @@ interface PartnerAccum {
   read: Cell;
   readBy: Cell;
   teammateMatches: number;
+  playedAgainstMatches: number;
 }
 
 function emptyCell(): Cell {
@@ -110,6 +113,7 @@ export function computePlayerSynergy(
       read: emptyCell(),
       readBy: emptyCell(),
       teammateMatches: 0,
+      playedAgainstMatches: 0,
     };
     partners.set(key, created);
     return created;
@@ -208,8 +212,12 @@ export function computePlayerSynergy(
     if (selfTeam !== undefined) {
       for (const [key, display] of roster) {
         if (key === selfKey) continue;
-        if (teamOf.get(norm(renames[key] ?? key)) !== selfTeam) continue;
-        partnerFor(key, display).teammateMatches++;
+        const otherTeam = teamOf.get(norm(renames[key] ?? key));
+        if (otherTeam === selfTeam) {
+          partnerFor(key, display).teammateMatches++;
+        } else if (otherTeam !== undefined) {
+          partnerFor(key, display).playedAgainstMatches++;
+        }
       }
     }
   }
@@ -220,6 +228,7 @@ export function computePlayerSynergy(
       read: synergyRead(a.read.chances, a.read.hits),
       readBy: synergyRead(a.readBy.chances, a.readBy.hits),
       teammateMatches: a.teammateMatches,
+      playedAgainstMatches: a.playedAgainstMatches,
     }))
     // A partner both players shared a roster with but never met on a
     // list-bearing song has nothing to rank on either side; keeping them would

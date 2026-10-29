@@ -70,6 +70,8 @@ export const MISS_TOP_N = 10;
 export interface MissRow {
   /** VN title, or artist name for the artist table */
   name: string;
+  /** other players who had this VN on their Mst list when this player missed it, comma-separated */
+  onListNames: string;
   /**
    * Every missed song behind the row, most-missed first: "Artist — Song" on
    * the VN table, "VN — Song" on the artist table. Always non-empty — a row
@@ -108,12 +110,14 @@ interface Accum {
   plays: number;
   asks: number;
   misses: number;
+  /** other players who had this VN on their Mst list when this player missed it — keyed by alias-resolved identity so an alias never shows twice */
+  onList: Map<string, string>;
   /** per-song misses behind this row, keyed by the stable track id */
   songs: Map<string, { label: string; misses: number }>;
 }
 
 function accum(name: string): Accum {
-  return { name, plays: 0, asks: 0, misses: 0, songs: new Map() };
+  return { name, plays: 0, asks: 0, misses: 0, onList: new Map(), songs: new Map() };
 }
 
 /**
@@ -181,16 +185,18 @@ export function computePlayerMisses(
         // player simply isn't in the export of a game they didn't play — which
         // is not a miss, so the song is skipped rather than counted as one.
         const pgi = song?.PlayerGuessInfos ?? {};
-        let mine: SongAnswers | null = null;
+        // Everyone present in this song, so we can note who else had the VN
+        // on their list when this player missed it.
+        const present: { key: string; username: string; byType: SongAnswers['byType'] }[] = [];
+        let meByType: SongAnswers['byType'] | null = null;
         for (const pd of Object.values(pgi) as any[]) {
           const answers = readAnswers(pd, isErumode);
           if (!answers) continue;
           const key = norm(renames[norm(answers.username)] || answers.username);
-          if (key !== selfKey) continue;
-          mine = answers;
-          break;
+          present.push({ key, username: answers.username, byType: answers.byType });
+          if (key === selfKey) meByType = answers.byType;
         }
-        if (!mine) continue;
+        if (!meByType) continue;
 
         // One ranking per answer type: the VN table reads the Mst (main-title)
         // answer grouped by the song's VN source, the artist table reads the A
@@ -199,7 +205,7 @@ export function computePlayerMisses(
         // A song asked while the room had no VN source still counts its A
         // answer, and vice versa — the rankings are independent.
         const track = songTrack(song);
-        const mst = mine.byType['Mst'];
+        const mst = meByType['Mst'];
         if (mst) {
           const source = getVNSource(song);
           if (source) {
@@ -208,12 +214,20 @@ export function computePlayerMisses(
             acc.asks++;
             if (!mst.correct) {
               acc.misses++;
+              for (const other of present) {
+                if (other.key === selfKey) continue;
+                if (other.byType['Mst']?.onList) {
+                  // Keyed by the alias-resolved identity so KreiBot / kreibot
+                  // never appear twice; display the canonical spelling.
+                  acc.onList.set(other.key, renames[norm(other.username)] || other.username);
+                }
+              }
               missSong(acc, track, artistSongLabel(song));
             }
             vns.set(source.id, acc);
           }
         }
-        const a = mine.byType['A'];
+        const a = meByType['A'];
         if (a) {
           for (const artist of getArtists(song)) {
             const acc = artists.get(artist.id) ?? accum(artist.name);
@@ -271,6 +285,7 @@ function rank(acc: Map<string, Accum>): { rows: MissRow[]; total: number; qualif
   return {
     rows: qualified.slice(0, MISS_TOP_N).map((a) => ({
       name: a.name,
+      onListNames: [...a.onList.values()].sort().join(', '),
       detail: [...a.songs.values()]
         .sort((x, y) => y.misses - x.misses || x.label.localeCompare(y.label))
         .map((s) => s.label),

@@ -85,7 +85,7 @@ function MissTable({
               <tr key={`${row.name}-${i}`} className={TABLE_ROW_CLASS}>
                 <td className="px-3 py-2 font-medium text-textSub">{i + 1}</td>
                 <td className="px-3 py-2 [overflow-wrap:anywhere]">
-                  <div className="font-medium">{row.name}</div>
+                  <div className="font-medium">{row.name}{row.onListNames ? ` (${row.onListNames})` : ''}</div>
                   {row.detail.map((line) => (
                     <div key={line} className="mt-0.5 text-xs text-textMuted">
                       {line}
