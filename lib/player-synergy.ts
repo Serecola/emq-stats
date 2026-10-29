@@ -255,11 +255,11 @@ export interface PartnerVnMiss {
  * grouped by partner — the per-pair companion to the pooled Most Missed
  * section.
  *
- * A miss is one answer type the partner had on their list that this player
- * got wrong; a hit (same song + answer type on their list that this player got
- * right) subtracts one. The running total is misses − hits, grouped by the
- * song's VN (so an Erumode song missed on both Mst and A counts twice, the
- * same way a synergy read counts per-answer-type chances). Keyed by the
+ * A miss is an Mst (main-title) answer the partner had on their list that this
+ * player got wrong; a hit (same song on their list that this player got right)
+ * subtracts one. The running total is misses − hits, grouped by the song's VN.
+ * Other answer types (artist, song name, developer, …) do not feed this table,
+ * so an Erumode song counts once, the same as an NGMC song. Keyed by the
  * partner's normalized username so the player page can look a partner up
  * without caring about display casing. Partners with no net-missed VNs in
  * scope are absent.
@@ -309,6 +309,7 @@ export function computePlayerSynergyVnMisses(
         for (const other of present) {
           if (other.key === selfKey) continue;
           for (const [type, myAnswer] of Object.entries(me.answers)) {
+            if (type !== 'Mst') continue;
             // Not on their list — not from their list at all.
             if (!other.answers[type]?.onList) continue;
             const source = getVNSource(song);
