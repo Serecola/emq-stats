@@ -23,6 +23,7 @@ import { TABLE_ROW_CLASS } from '@/lib/table-row';
 import MatchSectionNav, { type JumpSection } from '@/components/MatchSectionNav';
 import BackToTop from '@/components/BackToTop';
 import {
+  ALL_MATCH_FILTER,
   matchFilterLabel,
   matchFilterQuery,
   parseSubmodeFilter,
@@ -131,6 +132,14 @@ export default async function PlayerPage({
   const view = range === 'recent' ? slicePlayerSummary(player, RECENT_TOUR_COUNT) : player;
   const totalTournaments = player.entries.length;
 
+  // Synergy and Most Missed are not tied to a gamemode — they combine every
+  // tournament the player has in this slice, whatever mode it was played in.
+  // So they get their own view built from the unfiltered player stats, sliced
+  // by the same Recent / All-Time switch.
+  const allPlayer = await findPlayerStats(uname);
+  const allView = allPlayer ? (range === 'recent' ? slicePlayerSummary(allPlayer, RECENT_TOUR_COUNT) : allPlayer) : null;
+  const allMatchIds = allView?.entries.map((e) => e.matchId) ?? [];
+
   const ngmcEntries = view.entries.filter((e) => e.mode !== 'Erumode');
   const erumodeEntries = view.entries.filter((e) => e.mode === 'Erumode');
   // Only the tournament *list* is paginated (one page holds TOURS_PER_PAGE).
@@ -143,23 +152,17 @@ export default async function PlayerPage({
   const showErumode = filter.mode === 'Erumode' || erumodeEntries.length > 0;
   const showNgmc = filter.mode !== 'Erumode' || ngmcEntries.length > 0;
 
-  // Pairwise synergy — who this player reads and who reads them — over exactly
-  // the tournaments in view, so it narrows with the Recent / All-Time switch
-  // and the mode chips like everything else on the page. Scoped to the entries
-  // above rather than to the whole filter: a tournament they weren't rostered
-  // in is not in the history either, and `view` is already the sliced list.
-  // Computed here in the page body rather than inside the section so a thrown
-  // error is catchable — Server Component children can't be caught by this
-  // function's try/catch once React starts awaiting them, only errors raised
-  // in this body can, which is the same split the match page makes.
+  // Pairwise synergy — who this player reads and who reads them — over every
+  // tournament in this slice, whatever mode it was played in. Narrows with the
+  // Recent / All-Time switch but not with the mode chips. Computed here in the
+  // page body rather than inside the section so a thrown error is catchable —
+  // Server Component children can't be caught by this function's try/catch
+  // once React starts awaiting them, only errors raised in this body can,
+  // which is the same split the match page makes.
   let synergy: PlayerSynergyStats | null = null;
   let synergyError: unknown = null;
   try {
-    synergy = await findPlayerSynergy(
-      player.uname,
-      filter,
-      view.entries.map((e) => e.matchId)
-    );
+    synergy = await findPlayerSynergy(player.uname, ALL_MATCH_FILTER, allMatchIds);
   } catch (err) {
     synergyError = err;
   }
@@ -181,18 +184,15 @@ export default async function PlayerPage({
   const winRate = winRatePct(record ?? undefined);
 
   // What they keep missing: the VNs they can't name (Mst answers) and the
-  // artists they can't place (A answers) — over exactly the same tournaments
-  // in view, so it narrows with the Recent / All-Time switch and the mode chips
-  // too. Computed in this body for the same reason as the synergy read above:
-  // only errors raised here are catchable by this function's try/catch.
+  // artists they can't place (A answers) — over every tournament in this slice,
+  // whatever mode it was played in. Narrows with the Recent / All-Time switch
+  // but not with the mode chips. Computed in this body for the same reason as
+  // the synergy read above: only errors raised here are catchable by this
+  // function's try/catch.
   let misses: PlayerMissStats | null = null;
   let missesError: unknown = null;
   try {
-    misses = await findPlayerMisses(
-      player.uname,
-      filter,
-      view.entries.map((e) => e.matchId)
-    );
+    misses = await findPlayerMisses(player.uname, ALL_MATCH_FILTER, allMatchIds);
   } catch (err) {
     missesError = err;
   }
@@ -201,11 +201,7 @@ export default async function PlayerPage({
   // scoped to the same tournaments in view, cached like synergy and misses.
   let vnMisses: Record<string, PartnerVnMiss[]> | null = null;
   try {
-    vnMisses = await findPlayerSynergyVnMisses(
-      player.uname,
-      filter,
-      view.entries.map((e) => e.matchId)
-    );
+    vnMisses = await findPlayerSynergyVnMisses(player.uname, ALL_MATCH_FILTER, allMatchIds);
   } catch {
     // Left null on purpose — the dropdown simply stays closed per partner.
   }
@@ -328,6 +324,12 @@ export default async function PlayerPage({
         view.erumode.matchesPlayed === 0 && (
           <p className="text-sm text-textMuted">No tournament data for this player yet.</p>
         )}
+
+      {/* Divider between the per-mode sections and Synergy — only shown when
+          Synergy actually has something to say. */}
+      {(synergyError || (synergy?.hasData ?? false)) && (
+        <hr className="border-borderSub my-6" />
+      )}
 
       {/* Synergy — who this player reads and who reads them, across every other
           player they've shared a tournament with. A section of its own rather

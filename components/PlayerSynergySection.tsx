@@ -133,8 +133,9 @@ function PartnerRow({
 }) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
-  // Only show VNs with a positive net miss (misses minus correct guesses).
-  const displayMisses = vnMisses.filter((m) => m.count >= 1);
+  // Only show VNs with a net miss of two or more (misses minus correct guesses).
+  // Single-song misses are noise — a one-off wrong guess isn't a pattern.
+  const displayMisses = vnMisses.filter((m) => m.count >= 2);
   const hasMisses = displayMisses.length > 0;
   const pageCount = Math.max(1, Math.ceil(displayMisses.length / 5));
   const current = Math.min(page, pageCount);
