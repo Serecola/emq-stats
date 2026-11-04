@@ -348,7 +348,18 @@ what the app showed and what the stats were computed from.
 
 `GET /api/admin/export?id=<match id>` exports one tournament and
 `?format=json` skips the archive, returning the same content as a single JSON
-document for scripting. The whole route sits behind the admin session cookie
+document for scripting.
+
+Two optional query params reshape the archive:
+- `?flat=1` — every JSON goes at the archive root instead of one folder per
+  tournament (`tournaments/<date>-<region>-<mode>-<sub-mode>-<name>--<id>/`).
+  `manifest.json` stays at the root.
+- `?keepNames=1` — each JSON keeps its original game-export name instead of
+  being renamed to its bracket fixture. The two can be combined. The Tour
+  Manager's "Export all JSONs" button offers both as checkboxes before
+  downloading.
+
+The whole route sits behind the admin session cookie
 (the handler asks `hasAdminSession` and answers 401) and answers `Cache-Control:
 private, no-store`, so nothing between the proxy and the browser holds on to an
 archive of every upload. Worth running before a risky edit or a database

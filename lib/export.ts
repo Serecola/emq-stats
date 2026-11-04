@@ -1,6 +1,6 @@
 import { generateBracket, matchFilesToBracket, type BracketMatchup } from './schedule';
 import { withAliases, type PlayerAliases } from './player-aliases';
-import type { FormatType, Match } from './types';
+import type { FormatType, Match, MatchFile } from './types';
 
 /**
  * The export archive: one folder per tournament, the raw game export in every
@@ -77,6 +77,13 @@ export interface ExportFile {
   path: string;
   /** The parsed export, to be serialised by whoever writes the archive. */
   data: unknown;
+}
+
+export interface ExportOptions {
+  /** Put every JSON at the archive root instead of one folder per tournament. */
+  flat?: boolean;
+  /** Keep each upload's original game-export filename instead of the fixture name. */
+  keepNames?: boolean;
 }
 
 /**
@@ -168,17 +175,35 @@ function uploadFileName(
   return `${slug(file.label, file.id)}.json`;
 }
 
+/** The upload's own game-export name, as the game gave it — `.json` appended
+ * because the stored label drops the extension. Unsafe path characters are
+ * replaced, and an empty label falls back to the upload's own id. */
+function originalFileName(file: MatchFile): string {
+  const base = file.label
+    .replace(/\.json$/i, '')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .trim();
+  return `${base || file.id}.json`;
+}
+
 export function buildExport(
   matches: Match[],
   exportedAt: Date = new Date(),
-  aliases: PlayerAliases = {}
+  aliases: PlayerAliases = {},
+  options: ExportOptions = {}
 ): { manifest: ExportManifest; files: ExportFile[] } {
+  const { flat = false, keepNames = false } = options;
   const files: ExportFile[] = [];
   const tournaments: ExportedMatch[] = [];
+  // With folders each tournament's entries live under its own path, so a name
+  // clash only matters within one tournament. In a flat archive every entry
+  // sits at the root, so clashes can span tournaments — one shared used-set
+  // keeps every entry unique then.
+  const used = flat ? new Set<string>() : null;
 
   for (const match of matches) {
-    const folder = tournamentPath(match);
-    const used = new Set<string>();
+    const folder = flat ? '' : tournamentPath(match);
+    const localUsed = flat ? null : new Set<string>();
     const exported: ExportedMatchFile[] = [];
 
     // Which fixture each upload belongs to, resolved the same way the bracket
@@ -199,13 +224,18 @@ export function buildExport(
     }
 
     for (const file of match.files) {
-      let name = uploadFileName(file, fixtureByFileId.get(file.id));
-      for (let suffix = 2; used.has(name); suffix++) {
+      let name = keepNames
+        ? originalFileName(file)
+        : uploadFileName(file, fixtureByFileId.get(file.id));
+      // `used` is defined exactly when `flat` is, `localUsed` exactly when it
+      // isn't, so the bucket is always defined here.
+      const bucket = flat ? used : localUsed;
+      for (let suffix = 2; bucket!.has(name); suffix++) {
         name = `${name.replace(/\.json$/, '')}-${suffix}.json`;
       }
-      used.add(name);
+      bucket!.add(name);
 
-      const entry = `${folder}/${name}`;
+      const entry = folder ? `${folder}/${name}` : name;
       files.push({ path: entry, data: file.data });
       exported.push({
         id: file.id,

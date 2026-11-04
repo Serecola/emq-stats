@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   const format = searchParams.get('format');
+  const flat = searchParams.get('flat') === '1';
+  const keepNames = searchParams.get('keepNames') === '1';
 
   // `?id=` is one tournament; no id is the lot of them. Both read through the
   // store, so the exports are the same parsed JSON the rest of the app sees.
@@ -39,7 +41,10 @@ export async function GET(req: NextRequest) {
   const at = new Date();
   // Global aliases folded for fixture detection only — a manifest entry is
   // named after the fixture its JSON's two teams resolve to (see buildExport).
-  const { manifest, files } = buildExport(matches, at, await listPlayerAliases());
+  const { manifest, files } = buildExport(matches, at, await listPlayerAliases(), {
+    flat,
+    keepNames,
+  });
 
   // `?format=json` skips the archive: the same manifest with every export
   // inlined under its path, for scripting or a diff that shouldn't have to
