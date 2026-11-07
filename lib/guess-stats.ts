@@ -130,8 +130,7 @@ function ngmcFactors(playerCount: number): { erigMultiplier: number; maxRating: 
  * "Performance" — a single rating number distinct from Guess Rate, used
  * for cross-tournament comparison. Formula depends on mode/submode:
  *
- *   Erumode (Normal/Balanced/No Vocal): guessRate × 20
- *   Erumode Random:                     guessRate × 28
+ *   Erumode (all sub-modes): guessRate × 20
  *   NGMC:  ((guessRate × (1 − erigMultiplier)) + (erigs / 30 × erigMultiplier)) × maxRating
  *          — erigMultiplier/maxRating depend on total player count (see
  *          ngmcFactors), except NGMC Random always uses maxRating = 30.
@@ -152,8 +151,11 @@ function computePerformance(
   const guessRateFrac = guessRatePct / 100;
 
   if (mode === 'Erumode') {
-    const multiplier = submode === 'Random' ? 28 : 20;
-    return guessRateFrac * multiplier;
+    // All Erumode sub-modes (Normal / Random / Balanced / No Vocal) share the
+    // same ×20 curve so Performance — and therefore Expectation (Performance −
+    // Rank) — is comparable across them. A 50% guess rate reads 10 in any
+    // Erumode sub-mode instead of 14 in Random.
+    return guessRateFrac * 20;
   }
 
   const { erigMultiplier, maxRating: tieredMaxRating } = ngmcFactors(totalPlayers);
