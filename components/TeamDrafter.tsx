@@ -311,11 +311,7 @@ export default function TeamDrafter({
   }
 
   return (
-    <div className="mt-3 border-t border-border pt-3">
-      <label className="block text-xs font-medium text-textMuted">
-        Auto-draft teams
-      </label>
-
+    <div className="mt-3">
       {/* Rank source — which table the balance reads underneath the Ranks
           box. Pills match the Paste/Auto-draft toggle in MatchForm. */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
