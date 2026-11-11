@@ -408,7 +408,7 @@ export default function TeamDrafter({
             onChange={(e) => setRanksText(e.target.value)}
             rows={3}
             spellCheck={false}
-            placeholder="Format: ''Name: Rank''"
+            placeholder="Example ''Rank: Name''"
             className="w-full resize-y rounded-md border border-border bg-surfaceAlt px-2 py-1.5 font-mono text-xs outline-none focus:border-textSub"
           />
         </div>

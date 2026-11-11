@@ -150,7 +150,7 @@ export default function MatchForm({
   const askedSubNames = useRef<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [teamSource, setTeamSource] = useState<'paste' | 'draft'>('paste');
+  const [teamSource, setTeamSource] = useState<'paste' | 'draft'>('draft');
   // The tournament's format — how many rounds, in which mode (see
   // lib/format.ts): `cycles` is the rounds count behind the Rounds input
   // (default 2) and `formatType` which format pill is active — the pairwise
@@ -1142,7 +1142,7 @@ export default function MatchForm({
               intentionally NOT reset when switching back and forth, so a drafted
               result keeps sitting in `teamsText` even while the drafter is shown. */}
           <div className="mb-2 flex items-center gap-1.5">
-            {(['paste', 'draft'] as const).map((opt) => (
+            {(['draft', 'paste'] as const).map((opt) => (
               <button
                 key={opt}
                 type="button"
